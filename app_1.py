@@ -1,4 +1,4 @@
-"""
+ذ"""
 app_1.py — ICT Market Maker · Luxury Financial Dashboard
 Run with:  streamlit run app_1.py
 Requires:  engine.py  (unchanged)
