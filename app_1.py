@@ -1,191 +1,622 @@
 """
-app_1.py — ICT Market Maker · Luxury Financial Dashboard  v2
-Run with:  streamlit run app_1.py
-Requires:  engine.py  (unchanged)
-
-Updates v2:
-  1. .applymap -> .map  (pandas compatibility fix)
-  2. Light / Dark theme toggle
-  3. Compact sidebar (220px) + horizontal filter bar above radar table
-  4. Font sizes +20%, KPI values enlarged to --fs-kpi: 1.90rem
-  5. Arabic copyright footer: copyright جميع الحقوق محفوظة للحبي
+app_1.py — رادار المحرك الذكي  |  Smart Engine Radar
+Modern Arabic Dashboard  —  No Sidebar  —  Light Mode First
+Run: streamlit run app_1.py   |   Requires: engine.py
 """
 
 import streamlit as st
 import pandas as pd
-import time as _time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-
 import engine as E
 
-
+# ══════════════════════════════════════════════════════════════
+#  PAGE CONFIG
+# ══════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="ICT Market Maker Intelligence",
-    page_icon="◈",
+    page_title="رادار المحرك الذكي",
+    page_icon="📡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────
-#  THEME PALETTES
-# ─────────────────────────────────────────────
-
-DARK_PALETTE = """
-    --ink:#0a0b0e; --surface-0:#0d0f14; --surface-1:#12151c;
-    --surface-2:#181d27; --surface-3:#1e2535;
-    --rim:#252d3d; --rim-hi:#2e3a50;
-    --text-hi:#e8dcc8; --text-mid:#8a95a8; --text-lo:#3e4758;
-    --inp-bg:#181d27; --inp-border:#252d3d;
-    --table-bg:#12151c; --table-head:#0d0f14;
-    --table-border:#181d27; --table-hover:#1e2535;
-"""
-
-LIGHT_PALETTE = """
-    --ink:#f0ece6; --surface-0:#ffffff; --surface-1:#f7f3ee;
-    --surface-2:#ede8e0; --surface-3:#e3ddd4;
-    --rim:#d0c9be; --rim-hi:#b8ae9f;
-    --text-hi:#1d1d1f; --text-mid:#4a4540; --text-lo:#888078;
-    --inp-bg:#f7f3ee; --inp-border:#d0c9be;
-    --table-bg:#ffffff; --table-head:#f7f3ee;
-    --table-border:#ede8e0; --table-hover:#f0ece6;
-"""
-
-SHARED = """
-    --gold-hi:#c8a96e; --gold-mid:#a07848; --gold-dim:#5a3e20;
-    --gold-glow:rgba(200,169,110,0.14);
-    --jade:#3ecf8e; --crimson:#e05c6a;
-    --sapphire:#5b9cf6; --amethyst:#a78bfa;
-    --font-display:'Cormorant Garamond',Georgia,serif;
-    --font-mono:'JetBrains Mono','Noto Sans Arabic',monospace;
-    --fs-xs:0.67rem; --fs-sm:0.78rem; --fs-md:0.94rem;
-    --fs-lg:1.10rem; --fs-xl:1.32rem; --fs-kpi:1.90rem;
-    --fs-head:2.04rem;
-"""
-
-
-def build_css(theme):
-    pal = DARK_PALETTE if theme == "Luxury Dark" else LIGHT_PALETTE
-    return f"""
+# ══════════════════════════════════════════════════════════════
+#  GLOBAL CSS — Modern Arabic Dashboard
+# ══════════════════════════════════════════════════════════════
+GLOBAL_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Noto+Sans+Arabic:wght@300;400;500;600&display=swap');
-:root{{{pal}{SHARED}}}
-html,body,[class*="css"]{{background-color:var(--surface-0)!important;color:var(--text-hi)!important;font-size:16px;}}
-*{{box-sizing:border-box;}}
-::-webkit-scrollbar{{width:3px;height:3px;}}
-::-webkit-scrollbar-track{{background:var(--ink);}}
-::-webkit-scrollbar-thumb{{background:var(--gold-dim);border-radius:2px;}}
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&display=swap');
 
-/* ── Sidebar narrow ── */
-[data-testid="stSidebar"]>div:first-child{{width:220px!important;min-width:220px!important;max-width:220px!important;}}
-[data-testid="stSidebar"]{{background:var(--surface-1)!important;border-right:1px solid var(--rim)!important;}}
-[data-testid="stSidebar"]::before{{content:'';display:block;height:2px;background:linear-gradient(90deg,transparent,var(--gold-mid) 40%,var(--gold-hi) 60%,transparent);}}
-[data-testid="stSidebar"] *{{font-family:var(--font-mono)!important;font-size:var(--fs-sm)!important;}}
-.sb-logo{{padding:18px 14px 14px;border-bottom:1px solid var(--rim);margin-bottom:14px;}}
-.sb-logo-title{{font-family:var(--font-display)!important;font-size:var(--fs-xl);font-weight:600;color:var(--gold-hi);letter-spacing:2px;line-height:1;}}
-.sb-logo-sub{{font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:2px;margin-top:4px;text-transform:uppercase;}}
-.sb-label{{font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;}}
+/* ── Reset & root ── */
+:root {
+    --bg-page:    #F0F2F6;
+    --bg-card:    #FFFFFF;
+    --bg-header:  linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    --bg-sidebar: #FAFAFA;
 
-/* ── Buttons ── */
-.stButton>button{{background:transparent!important;border:1px solid var(--rim-hi)!important;color:var(--text-mid)!important;border-radius:3px!important;font-family:var(--font-mono)!important;font-size:var(--fs-sm)!important;letter-spacing:1.5px!important;text-transform:uppercase!important;padding:9px 14px!important;transition:all .25s ease!important;position:relative!important;overflow:hidden!important;}}
-.stButton>button::after{{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--gold-hi);transform:scaleX(0);transition:transform .3s ease;}}
-.stButton>button:hover{{border-color:var(--gold-mid)!important;color:var(--gold-hi)!important;background:var(--gold-glow)!important;}}
-.stButton>button:hover::after{{transform:scaleX(1);}}
-.stButton>button[kind="primary"]{{background:var(--gold-glow)!important;border-color:var(--gold-mid)!important;color:var(--gold-hi)!important;}}
-.stButton>button[kind="primary"]:hover{{background:rgba(200,169,110,.22)!important;border-color:var(--gold-hi)!important;box-shadow:0 0 18px rgba(200,169,110,.18)!important;}}
+    --blue-500:   #4F46E5;
+    --blue-400:   #6366F1;
+    --blue-100:   #EEF2FF;
+    --purple-500: #7C3AED;
+    --purple-100: #F5F3FF;
+    --green-500:  #10B981;
+    --green-100:  #ECFDF5;
+    --red-500:    #EF4444;
+    --red-100:    #FEF2F2;
+    --amber-500:  #F59E0B;
+    --amber-100:  #FFFBEB;
+    --gray-50:    #F9FAFB;
+    --gray-100:   #F3F4F6;
+    --gray-200:   #E5E7EB;
+    --gray-300:   #D1D5DB;
+    --gray-400:   #9CA3AF;
+    --gray-500:   #6B7280;
+    --gray-700:   #374151;
+    --gray-900:   #111827;
 
-/* ── Inputs ── */
-.stSelectbox label,.stTextInput label,.stSlider label,.stRadio label,.stCheckbox label,.stMultiSelect label{{font-family:var(--font-mono)!important;font-size:var(--fs-xs)!important;color:var(--text-lo)!important;letter-spacing:2px!important;text-transform:uppercase!important;}}
-div[data-baseweb="select"]>div,div[data-baseweb="input"]>div{{background:var(--inp-bg)!important;border-color:var(--inp-border)!important;border-radius:3px!important;color:var(--text-hi)!important;font-size:var(--fs-sm)!important;}}
-div[data-baseweb="select"]>div:focus-within,div[data-baseweb="input"]>div:focus-within{{border-color:var(--gold-mid)!important;box-shadow:0 0 0 1px var(--gold-dim)!important;}}
-div[data-testid="stRadio"]>div{{gap:6px!important;}}
-div[data-testid="stRadio"] label{{background:var(--inp-bg)!important;border:1px solid var(--rim)!important;border-radius:3px!important;padding:5px 10px!important;font-size:var(--fs-sm)!important;color:var(--text-mid)!important;cursor:pointer!important;transition:all .2s!important;}}
-div[data-testid="stRadio"] label:has(input:checked){{border-color:var(--gold-mid)!important;color:var(--gold-hi)!important;background:var(--gold-glow)!important;}}
-div[data-testid="stSlider"] div[role="slider"]{{background:var(--gold-hi)!important;border:2px solid var(--ink)!important;}}
-details summary{{font-family:var(--font-mono)!important;font-size:var(--fs-sm)!important;color:var(--text-mid)!important;letter-spacing:1px!important;}}
-details{{background:var(--surface-2)!important;border:1px solid var(--rim)!important;border-radius:4px!important;padding:2px 8px!important;}}
-div[data-testid="stProgressBar"]>div>div{{background:linear-gradient(90deg,var(--gold-dim),var(--gold-hi))!important;border-radius:2px!important;}}
-hr{{border:none!important;border-top:1px solid var(--rim)!important;margin:8px 0!important;}}
-div[data-testid="stInfo"],div[data-testid="stSuccess"],div[data-testid="stError"],div[data-testid="stWarning"]{{border-radius:4px!important;font-family:var(--font-mono)!important;font-size:var(--fs-md)!important;color:var(--text-hi)!important;}}
-div[data-testid="stInfo"]{{background:rgba(91,156,246,.06)!important;border:1px solid rgba(91,156,246,.2)!important;}}
-div[data-testid="stSuccess"]{{background:rgba(62,207,142,.06)!important;border:1px solid rgba(62,207,142,.2)!important;}}
-div[data-testid="stError"]{{background:rgba(224,92,106,.06)!important;border:1px solid rgba(224,92,106,.25)!important;}}
-div[data-testid="stWarning"]{{background:rgba(200,169,110,.06)!important;border:1px solid rgba(200,169,110,.25)!important;}}
-.stDataFrame iframe{{border:none!important;}}
+    --shadow-sm:  0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.10);
+    --shadow-md:  0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+    --shadow-lg:  0 10px 15px rgba(0,0,0,.08), 0 4px 6px rgba(0,0,0,.05);
+    --radius-sm:  8px;
+    --radius-md:  12px;
+    --radius-lg:  16px;
+    --radius-xl:  24px;
 
-/* ── Layout components ── */
-.sec-head{{display:flex;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--rim);margin-bottom:14px;}}
-.sec-head-title{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:3px;text-transform:uppercase;}}
-.sec-head-line{{flex:1;height:1px;background:linear-gradient(90deg,var(--rim),transparent);}}
+    --font-ar:    'Tajawal', 'IBM Plex Sans Arabic', sans-serif;
+}
 
-.page-header{{background:var(--surface-1);border:1px solid var(--rim);border-radius:5px;padding:18px 24px 16px;margin-bottom:20px;position:relative;overflow:hidden;}}
-.page-header::before{{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-mid) 30%,var(--gold-hi) 50%,var(--gold-mid) 70%,transparent);}}
-.page-header::after{{content:'';position:absolute;top:0;right:0;width:180px;height:100%;background:radial-gradient(ellipse at top right,rgba(200,169,110,.04) 0%,transparent 70%);pointer-events:none;}}
-.ph-eyebrow{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--gold-mid);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px;}}
-.ph-title{{font-family:var(--font-display);font-size:var(--fs-head);font-weight:500;color:var(--text-hi);letter-spacing:1px;line-height:1.1;margin:0 0 6px;}}
-.ph-meta{{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-lo);letter-spacing:1px;}}
+/* ── Global ── */
+html, body, [class*="css"] {
+    background-color: var(--bg-page) !important;
+    font-family: var(--font-ar) !important;
+    direction: rtl !important;
+    color: var(--gray-900) !important;
+}
+* { box-sizing: border-box; margin: 0; }
 
-.kpi-wrap{{background:var(--surface-1);border:1px solid var(--rim);border-radius:4px;padding:18px 18px 14px;position:relative;overflow:hidden;transition:border-color .25s;}}
-.kpi-wrap:hover{{border-color:var(--rim-hi);}}
-.kpi-label{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:8px;}}
-.kpi-value{{font-family:var(--font-mono);font-size:var(--fs-kpi);font-weight:500;line-height:1;}}
-.kpi-sub{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-lo);margin-top:5px;}}
+/* Hide sidebar toggle */
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stSidebar"] { display: none !important; }
+section[data-testid="stSidebar"] { display: none !important; }
 
-.grade-pill{{display:inline-block;font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:600;letter-spacing:2px;padding:3px 10px;border-radius:2px;}}
-.grade-ap{{background:rgba(62,207,142,.1);color:#3ecf8e;border:1px solid rgba(62,207,142,.25);}}
-.grade-a{{background:rgba(91,156,246,.1);color:#5b9cf6;border:1px solid rgba(91,156,246,.25);}}
-.grade-b{{background:rgba(200,169,110,.1);color:#c8a96e;border:1px solid rgba(200,169,110,.2);}}
-.grade-skip{{background:rgba(62,71,88,.3);color:#3e4758;border:1px solid rgba(62,71,88,.4);}}
+/* Streamlit main padding */
+.main .block-container {
+    padding: 0 1.5rem 2rem !important;
+    max-width: 1400px !important;
+}
 
-.dlog-panel{{background:var(--surface-1);border:1px solid var(--rim);border-radius:4px;padding:14px 16px;height:100%;}}
-.dlog-header{{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--rim);}}
-.dlog-bias{{font-family:var(--font-display);font-size:var(--fs-xl);font-weight:600;letter-spacing:1px;}}
-.dlog-score-badge{{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-mid);letter-spacing:1px;}}
-.dlog-entry{{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--surface-2);}}
-.dlog-entry:last-child{{border-bottom:none;margin-bottom:0;}}
-.dlog-stage-label{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--amethyst);letter-spacing:2px;text-transform:uppercase;margin-bottom:3px;}}
-.dlog-finding{{font-family:var(--font-mono);font-size:var(--fs-md);color:var(--text-hi);margin-bottom:2px;}}
-.dlog-reason{{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-lo);line-height:1.5;margin-bottom:2px;}}
-.dlog-risk{{font-family:var(--font-mono);font-size:var(--fs-xs);color:#c8a96e;opacity:.9;}}
-.dlog-delta{{font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:600;margin-top:3px;}}
-.dlog-pnl-block{{background:var(--surface-0);border-radius:3px;padding:10px 12px;margin-top:10px;}}
-.dlog-pnl-label{{font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:2px;text-transform:uppercase;}}
-.dlog-pnl-value{{font-family:var(--font-mono);font-size:var(--fs-xl);font-weight:600;margin-top:2px;}}
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--gray-100); border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--blue-400); }
 
-.tl-table{{width:100%;border-collapse:separate;border-spacing:0 3px;font-family:var(--font-mono);font-size:var(--fs-md);}}
-.tl-table th{{font-size:var(--fs-xs);letter-spacing:2px;text-transform:uppercase;color:var(--text-lo);padding:5px 10px;text-align:left;font-weight:400;}}
-.tl-table td{{padding:8px 10px;background:var(--surface-2);color:var(--text-mid);}}
-.tl-table tr:first-child td{{border-radius:3px 3px 0 0;}}
-.tl-table tr:last-child td{{border-radius:0 0 3px 3px;}}
-.tl-entry td{{color:#5b9cf6!important;font-weight:600;}}
-.tl-sl td{{color:#e05c6a!important;}}
-.tl-tp td{{color:#3ecf8e!important;}}
+/* ══════════════════════════════════════
+   TOP HEADER
+══════════════════════════════════════ */
+.app-header {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 60%, #9333EA 100%);
+    padding: 28px 36px;
+    margin: -1rem -1.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.app-header-left { display: flex; align-items: center; gap: 14px; }
+.app-header-icon {
+    width: 50px; height: 50px;
+    background: rgba(255,255,255,.18);
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+}
+.app-header-title {
+    font-family: var(--font-ar);
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    line-height: 1.1;
+    letter-spacing: -0.3px;
+}
+.app-header-sub {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: rgba(255,255,255,.7);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+.app-header-right {
+    display: flex; align-items: center; gap: 12px;
+}
+.header-badge {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,.9);
+    font-family: var(--font-ar);
+    backdrop-filter: blur(4px);
+}
 
-.skip-placeholder{{background:var(--surface-1);border:1px solid var(--rim);border-radius:4px;padding:32px 20px;text-align:center;}}
-.skip-icon{{font-family:var(--font-display);font-size:2.5rem;color:var(--text-lo);display:block;margin-bottom:12px;}}
-.skip-title{{font-family:var(--font-display);font-size:var(--fs-xl);color:var(--text-lo);margin-bottom:6px;}}
-.skip-body{{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-lo);line-height:1.7;letter-spacing:.5px;}}
+/* ══════════════════════════════════════
+   CONTROL BAR
+══════════════════════════════════════ */
+.control-bar {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 18px 24px;
+    margin: 20px 0 8px;
+    border: 1px solid var(--gray-200);
+}
+.control-bar-title {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--gray-400);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
 
-.drill-badge{{display:flex;justify-content:space-between;align-items:center;background:var(--surface-1);border:1px solid var(--rim);border-radius:4px;padding:12px 18px;margin-bottom:14px;}}
-.drill-ticker{{font-family:var(--font-display);font-size:var(--fs-head);font-weight:600;letter-spacing:2px;}}
-.drill-meta{{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-lo);letter-spacing:1px;}}
+/* Streamlit widget overrides inside control bar */
+.stSelectbox label, .stTextInput label,
+.stMultiSelect label, .stSlider label {
+    font-family: var(--font-ar) !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    color: var(--gray-500) !important;
+    margin-bottom: 4px !important;
+}
+div[data-baseweb="select"] > div {
+    background: var(--gray-50) !important;
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--font-ar) !important;
+    font-size: 0.88rem !important;
+    transition: border-color .2s !important;
+}
+div[data-baseweb="select"] > div:hover {
+    border-color: var(--blue-400) !important;
+}
+div[data-baseweb="select"] > div:focus-within {
+    border-color: var(--blue-500) !important;
+    box-shadow: 0 0 0 3px rgba(79,70,229,.12) !important;
+}
+div[data-baseweb="input"] > div {
+    background: var(--gray-50) !important;
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius-sm) !important;
+    font-family: var(--font-ar) !important;
+    transition: border-color .2s !important;
+}
+div[data-baseweb="input"] > div:focus-within {
+    border-color: var(--blue-500) !important;
+    box-shadow: 0 0 0 3px rgba(79,70,229,.12) !important;
+}
 
-.stat-bar{{display:flex;gap:1px;margin:12px 0 16px;}}
-.stat-seg{{flex:1;height:3px;border-radius:1px;background:var(--rim);transition:background .4s;}}
-.stat-seg.filled-ap{{background:#3ecf8e;}}
-.stat-seg.filled-a{{background:#5b9cf6;}}
-.stat-seg.filled-b{{background:#c8a96e;}}
-.stat-seg.filled-sk{{background:#3e4758;}}
+/* ══════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════ */
+.stButton > button {
+    font-family: var(--font-ar) !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 10px 22px !important;
+    transition: all .2s ease !important;
+    border: none !important;
+    cursor: pointer !important;
+}
+/* Default button */
+.stButton > button:not([kind="primary"]) {
+    background: var(--gray-100) !important;
+    color: var(--gray-700) !important;
+    border: 1px solid var(--gray-200) !important;
+}
+.stButton > button:not([kind="primary"]):hover {
+    background: var(--gray-200) !important;
+    border-color: var(--gray-300) !important;
+}
+/* Primary */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #4F46E5, #7C3AED) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(79,70,229,.35) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(79,70,229,.45) !important;
+}
+.stButton > button[kind="primary"]:active {
+    transform: translateY(0) !important;
+}
 
-.app-footer{{font-family:var(--font-mono);font-size:var(--fs-md);color:var(--gold-mid);letter-spacing:1.5px;text-align:center;padding:22px 0 14px;border-top:1px solid var(--gold-dim);margin-top:32px;direction:rtl;}}
-.app-footer .footer-en{{font-size:var(--fs-xs);color:var(--text-lo);letter-spacing:1px;margin-top:5px;direction:ltr;display:block;text-transform:uppercase;}}
+/* ══════════════════════════════════════
+   KPI METRIC CARDS
+══════════════════════════════════════ */
+.kpi-row {
+    display: grid;
+    gap: 16px;
+    margin: 20px 0;
+}
+.kpi-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    padding: 20px 22px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: box-shadow .2s, transform .2s;
+    position: relative;
+    overflow: hidden;
+}
+.kpi-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 4px; height: 100%;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.kpi-card.blue::before  { background: #4F46E5; }
+.kpi-card.green::before { background: #10B981; }
+.kpi-card.red::before   { background: #EF4444; }
+.kpi-card.amber::before { background: #F59E0B; }
+.kpi-card.purple::before{ background: #7C3AED; }
+.kpi-card.teal::before  { background: #14B8A6; }
+
+.kpi-icon-wrap {
+    width: 52px; height: 52px;
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+.kpi-icon-wrap.blue   { background: var(--blue-100);   }
+.kpi-icon-wrap.green  { background: var(--green-100);  }
+.kpi-icon-wrap.red    { background: var(--red-100);    }
+.kpi-icon-wrap.amber  { background: var(--amber-100);  }
+.kpi-icon-wrap.purple { background: var(--purple-100); }
+.kpi-icon-wrap.teal   { background: #F0FDFA; }
+
+.kpi-body { flex: 1; direction: rtl; text-align: right; }
+.kpi-value {
+    font-family: var(--font-ar);
+    font-size: 1.85rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.kpi-value.blue   { color: #4F46E5; }
+.kpi-value.green  { color: #10B981; }
+.kpi-value.red    { color: #EF4444; }
+.kpi-value.amber  { color: #F59E0B; }
+.kpi-value.purple { color: #7C3AED; }
+.kpi-value.teal   { color: #14B8A6; }
+
+.kpi-label-ar {
+    font-family: var(--font-ar);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    line-height: 1.3;
+}
+.kpi-label-en {
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--gray-400);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* ══════════════════════════════════════
+   SECTION HEADER
+══════════════════════════════════════ */
+.sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 24px 0 14px;
+}
+.sec-head-left { display: flex; align-items: center; gap: 10px; }
+.sec-head-icon {
+    width: 36px; height: 36px;
+    background: var(--blue-100);
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+}
+.sec-head-ar {
+    font-family: var(--font-ar);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gray-900);
+}
+.sec-head-en {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--gray-400);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.sec-head-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--gray-200), transparent);
+    margin: 0 16px;
+}
+
+/* ══════════════════════════════════════
+   GRADE PILLS
+══════════════════════════════════════ */
+.grade-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-ar);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+.gp-ap { background: #DCFCE7; color: #15803D; }
+.gp-a  { background: #DBEAFE; color: #1D4ED8; }
+.gp-b  { background: #FEF9C3; color: #854D0E; }
+.gp-c  { background: #FEE2E2; color: #991B1B; }
+.gp-sk { background: var(--gray-100); color: var(--gray-500); }
+
+/* ══════════════════════════════════════
+   RADAR TABLE — custom card-style wrapper
+══════════════════════════════════════ */
+.table-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+.table-card-header {
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.table-card-title {
+    font-family: var(--font-ar);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--gray-700);
+}
+.stDataFrame iframe { border: none !important; }
+.stDataFrame > div  {
+    border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
+    border: none !important;
+}
+
+/* ══════════════════════════════════════
+   DECISION LOG CARD
+══════════════════════════════════════ */
+.dlog-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    overflow: hidden;
+}
+.dlog-card-head {
+    background: linear-gradient(135deg, #4F46E5, #7C3AED);
+    padding: 16px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.dlog-bias-label {
+    font-family: var(--font-ar);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fff;
+}
+.dlog-body { padding: 0; }
+.dlog-entry {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--gray-100);
+    transition: background .15s;
+}
+.dlog-entry:last-child { border-bottom: none; }
+.dlog-entry:hover { background: var(--gray-50); }
+.dlog-stage {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--blue-400);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+.dlog-finding {
+    font-family: var(--font-ar);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-800);
+    margin-bottom: 3px;
+}
+.dlog-reason  { font-size: 0.75rem; color: var(--gray-500); line-height: 1.5; }
+.dlog-risk    { font-size: 0.72rem; color: #D97706; margin-top: 3px; }
+.dlog-delta   { font-size: 0.72rem; font-weight: 700; margin-top: 4px; }
+.dlog-pnl {
+    background: var(--gray-50);
+    padding: 14px 20px;
+    border-top: 2px solid var(--gray-200);
+}
+.dlog-pnl-lbl {
+    font-size: 0.65rem;
+    color: var(--gray-400);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.dlog-pnl-val {
+    font-family: var(--font-ar);
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+
+/* ══════════════════════════════════════
+   TRADE LEVELS TABLE
+══════════════════════════════════════ */
+.tl-wrap {
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    overflow: hidden;
+}
+.tl-table { width: 100%; border-collapse: collapse; font-family: var(--font-ar); }
+.tl-table thead th {
+    background: var(--gray-50);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    text-align: right;
+    border-bottom: 1px solid var(--gray-200);
+}
+.tl-table tbody td { padding: 11px 16px; font-size: 0.88rem; border-bottom: 1px solid var(--gray-100); }
+.tl-table tbody tr:last-child td { border-bottom: none; }
+.tl-table tbody tr:hover td { background: var(--gray-50); }
+.tl-entry td:first-child { color: #4F46E5; font-weight: 700; }
+.tl-sl    td:first-child { color: #EF4444; font-weight: 700; }
+.tl-tp    td:first-child { color: #10B981; font-weight: 700; }
+.tl-price { font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; }
+
+/* ══════════════════════════════════════
+   DRILL DOWN BADGE
+══════════════════════════════════════ */
+.drill-badge {
+    background: linear-gradient(135deg, #EEF2FF, #F5F3FF);
+    border: 1px solid #C7D2FE;
+    border-radius: var(--radius-md);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+}
+.drill-sym {
+    font-family: var(--font-ar);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--blue-500);
+    letter-spacing: 1px;
+}
+.drill-meta { font-size: 0.75rem; color: var(--gray-500); letter-spacing: 0.5px; }
+
+/* ══════════════════════════════════════
+   STAT BAR
+══════════════════════════════════════ */
+.stat-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; margin: 8px 0 20px; }
+.stat-seg { flex: 1; }
+.stat-seg.ap { background: #10B981; }
+.stat-seg.aa { background: #4F46E5; }
+.stat-seg.bb { background: #F59E0B; }
+.stat-seg.sk { background: var(--gray-200); }
+
+/* ══════════════════════════════════════
+   ALERTS
+══════════════════════════════════════ */
+div[data-testid="stInfo"]    { background: #EEF2FF !important; border: 1px solid #C7D2FE !important; border-radius: var(--radius-sm) !important; color: var(--gray-700) !important; font-family: var(--font-ar) !important; }
+div[data-testid="stSuccess"] { background: #ECFDF5 !important; border: 1px solid #A7F3D0 !important; border-radius: var(--radius-sm) !important; color: var(--gray-700) !important; font-family: var(--font-ar) !important; }
+div[data-testid="stError"]   { background: #FEF2F2 !important; border: 1px solid #FECACA !important; border-radius: var(--radius-sm) !important; color: var(--gray-700) !important; font-family: var(--font-ar) !important; }
+
+/* Progress bar */
+div[data-testid="stProgressBar"] > div > div {
+    background: linear-gradient(90deg, #4F46E5, #7C3AED) !important;
+    border-radius: 4px !important;
+}
+div[data-testid="stProgressBar"] > div {
+    background: var(--gray-200) !important;
+    border-radius: 4px !important;
+}
+
+/* ══════════════════════════════════════
+   RADIO & MULTISELECT
+══════════════════════════════════════ */
+div[data-testid="stRadio"] label {
+    font-family: var(--font-ar) !important;
+    font-size: 0.85rem !important;
+    color: var(--gray-700) !important;
+}
+div[data-testid="stMultiSelect"] span {
+    font-family: var(--font-ar) !important;
+}
+
+/* ══════════════════════════════════════
+   FOOTER
+══════════════════════════════════════ */
+.app-footer {
+    margin-top: 48px;
+    padding: 20px 0 8px;
+    border-top: 1px solid var(--gray-200);
+    text-align: center;
+}
+.app-footer-ar {
+    font-family: var(--font-ar);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--blue-500);
+    margin-bottom: 4px;
+}
+.app-footer-en {
+    font-size: 0.65rem;
+    color: var(--gray-400);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+/* ══════════════════════════════════════
+   PLACEHOLDER
+══════════════════════════════════════ */
+.placeholder-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 2px dashed var(--gray-200);
+    padding: 48px 24px;
+    text-align: center;
+}
+.placeholder-icon { font-size: 3rem; display: block; margin-bottom: 14px; }
+.placeholder-title {
+    font-family: var(--font-ar);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--gray-700);
+    margin-bottom: 8px;
+}
+.placeholder-body {
+    font-family: var(--font-ar);
+    font-size: 0.85rem;
+    color: var(--gray-400);
+    line-height: 1.7;
+}
+
+/* Divider */
+hr { border: none !important; border-top: 1px solid var(--gray-200) !important; margin: 8px 0 !important; }
 </style>
 """
 
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  CACHED ENGINE
-# ─────────────────────────────────────────────
 
+# ══════════════════════════════════════════════════════════════
+#  CACHED ENGINE CALLS  (logic unchanged)
+# ══════════════════════════════════════════════════════════════
 @st.cache_data(ttl=300, show_spinner=False)
 def cached_run_engine(ticker, smt_ticker, htf_interval, exec_interval,
                       entry_interval, htf_period, exec_period):
@@ -217,141 +648,335 @@ def cached_scan_pair(ticker, smt_ticker, htf_interval, exec_interval,
                 "_score_num": -1, "_grade_rank": 100}
 
 
-# ─────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────
-
-def grade_color(g):
-    return {"A+":"#3ecf8e","A":"#5b9cf6","B":"#c8a96e","C":"#6b7585"}.get(g,"#3e4758")
+# ══════════════════════════════════════════════════════════════
+#  DESIGN HELPERS
+# ══════════════════════════════════════════════════════════════
+def grade_color_hex(g):
+    return {"A+": "#10B981", "A": "#4F46E5", "B": "#F59E0B", "C": "#EF4444"}.get(g, "#9CA3AF")
 
 def grade_pill(g):
-    css = {"A+":"grade-ap","A":"grade-a","B":"grade-b"}.get(g,"grade-skip")
-    return f'<span class="grade-pill {css}">{g}</span>'
+    cls = {"A+": "gp-ap", "A": "gp-a", "B": "gp-b", "C": "gp-c"}.get(g, "gp-sk")
+    return f'<span class="grade-pill {cls}">{g}</span>'
 
-def sec_header(title):
-    st.markdown(f'<div class="sec-head"><span class="sec-head-title">{title}</span>'
-                '<div class="sec-head-line"></div></div>', unsafe_allow_html=True)
+def kpi_card_html(icon, value, label_ar, label_en, color_cls):
+    return f"""
+    <div class="kpi-card {color_cls}">
+      <div class="kpi-icon-wrap {color_cls}">{icon}</div>
+      <div class="kpi-body">
+        <div class="kpi-value {color_cls}">{value}</div>
+        <div class="kpi-label-ar">{label_ar}</div>
+        <div class="kpi-label-en">{label_en}</div>
+      </div>
+    </div>"""
 
-def kpi_card(col, label, value, color, sub=""):
-    sub_html = f"<div class='kpi-sub'>{sub}</div>" if sub else ""
-    col.markdown(f'<div class="kpi-wrap"><div class="kpi-label">{label}</div>'
-                 f'<div class="kpi-value" style="color:{color}">{value}</div>'
-                 f'{sub_html}</div>', unsafe_allow_html=True)
+def sec_header(icon, ar, en=""):
+    st.markdown(f"""
+    <div class="sec-head">
+      <div class="sec-head-left">
+        <div class="sec-head-icon">{icon}</div>
+        <div>
+          <div class="sec-head-ar">{ar}</div>
+          {"<div class='sec-head-en'>" + en + "</div>" if en else ""}
+        </div>
+      </div>
+      <div class="sec-head-line"></div>
+    </div>""", unsafe_allow_html=True)
 
-def _app_footer():
-    st.markdown(
-        '<div class="app-footer">'
-        '\u00a9 \u062c\u0645\u064a\u0639 \u0627\u0644\u062d\u0642\u0648\u0642 \u0645\u062d\u0641\u0648\u0638\u0629 \u0644\u0644\u062d\u0628\u064a'
-        '<span class="footer-en">ICT Market Maker Engine &middot; Educational use only &middot; Not financial advice</span>'
-        '</div>', unsafe_allow_html=True)
+def app_footer():
+    st.markdown("""
+    <div class="app-footer">
+      <div class="app-footer-ar">© جميع الحقوق محفوظة للحبي</div>
+      <div class="app-footer-en">ICT Smart Engine Radar · Educational Use Only · Not Financial Advice</div>
+    </div>""", unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-#  SIDEBAR  (compact 220 px)
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  TOP HEADER
+# ══════════════════════════════════════════════════════════════
+def render_header(mode, ticker="", smt="", preset="", n_symbols=0):
+    badge_mode = "تحليل منفرد" if mode == "single" else "مسح الرادار"
+    badge_sym  = f"<span class='header-badge'>{ticker} / {smt}</span>" if mode == "single" else \
+                 f"<span class='header-badge'>{preset} · {n_symbols} سهم</span>"
+    st.markdown(f"""
+    <div class="app-header">
+      <div class="app-header-left">
+        <div class="app-header-icon">📡</div>
+        <div>
+          <div class="app-header-title">رادار المحرك الذكي</div>
+          <div class="app-header-sub">Smart Engine Radar · ICT Protocol</div>
+        </div>
+      </div>
+      <div class="app-header-right">
+        <span class="header-badge">{badge_mode}</span>
+        {badge_sym}
+      </div>
+    </div>""", unsafe_allow_html=True)
 
-def render_sidebar():
-    with st.sidebar:
-        st.markdown('<div class="sb-logo"><div class="sb-logo-title">&#9672; ICT</div>'
-                    '<div class="sb-logo-sub">Market Maker Intel</div></div>',
-                    unsafe_allow_html=True)
 
-        # Theme toggle
-        st.markdown('<div class="sb-label">Theme</div>', unsafe_allow_html=True)
-        theme = st.radio("__theme__", ["Luxury Dark", "Minimal Light"],
-                         horizontal=False, label_visibility="collapsed",
-                         key="app_theme")
+# ══════════════════════════════════════════════════════════════
+#  CONTROL BAR  (horizontal, no sidebar)
+# ══════════════════════════════════════════════════════════════
+def render_controls():
+    """Returns (mode, ticker, smt_ticker, watchlist, preset, cfg, run_btn, scan_btn)"""
 
-        st.divider()
+    st.markdown('<div class="control-bar">'
+                '<div class="control-bar-title">⚙ إعدادات التحليل — Analysis Settings</div>',
+                unsafe_allow_html=True)
 
-        # Mode
-        st.markdown('<div class="sb-label">Mode</div>', unsafe_allow_html=True)
-        mode = st.radio("__mode__", ["Single Stock", "Radar Scan"],
-                        horizontal=False, label_visibility="collapsed")
+    # Row 1 — Mode + main controls
+    c_mode, c_sym, c_smt, c_wl, c_htf, c_exec, c_per = st.columns([1.2, 1.2, 1, 1.8, 1, 1, 1])
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    with c_mode:
+        mode_choice = st.radio(
+            "النوع / Mode",
+            ["📈 سهم واحد", "📡 رادار"],
+            horizontal=False,
+            label_visibility="visible"
+        )
+        mode = "single" if "سهم" in mode_choice else "radar"
 
-        if mode == "Single Stock":
-            st.markdown('<div class="sb-label">Symbol</div>', unsafe_allow_html=True)
-            ticker = st.text_input("__tkr__", value="TSLA",
-                                   label_visibility="collapsed").strip().upper()
-            st.markdown('<div class="sb-label">SMT Pair</div>', unsafe_allow_html=True)
-            smt_ticker = st.text_input("__smt__", value="QQQ",
-                                       label_visibility="collapsed").strip().upper()
-        else:
-            ticker, smt_ticker = "TSLA", "QQQ"
+    with c_sym:
+        ticker = st.text_input(
+            "الرمز / Symbol",
+            value="TSLA",
+            placeholder="TSLA"
+        ).strip().upper()
 
-        if mode == "Radar Scan":
-            st.markdown('<div class="sb-label">Watchlist</div>', unsafe_allow_html=True)
-            preset    = st.selectbox("__wl__", list(E.WATCHLIST_PRESETS.keys()),
-                                     label_visibility="collapsed")
-            watchlist = E.WATCHLIST_PRESETS[preset]
-            st.markdown(f'<div class="sb-label" style="margin-top:4px;">'
-                        f'{len(watchlist)} symbols</div>', unsafe_allow_html=True)
-        else:
-            watchlist, preset = None, None
+    with c_smt:
+        smt_ticker = st.text_input(
+            "SMT Pair",
+            value="QQQ",
+            placeholder="QQQ"
+        ).strip().upper()
 
-        st.divider()
+    with c_wl:
+        preset = st.selectbox(
+            "قائمة المراقبة / Watchlist",
+            list(E.WATCHLIST_PRESETS.keys()),
+            disabled=(mode == "single")
+        )
+        watchlist = E.WATCHLIST_PRESETS[preset]
 
-        st.markdown('<div class="sb-label">HTF</div>', unsafe_allow_html=True)
-        htf_interval = st.selectbox("__htf__", ["1d","1wk","4h","1h"],
-                                    label_visibility="collapsed")
-        st.markdown('<div class="sb-label">Exec TF</div>', unsafe_allow_html=True)
-        exec_interval = st.selectbox("__exec__", ["15m","30m","1h","5m"],
-                                     label_visibility="collapsed")
-        st.markdown('<div class="sb-label">HTF Period</div>', unsafe_allow_html=True)
-        htf_period = st.selectbox("__hp__", ["6mo","3mo","1y","2y"],
-                                  label_visibility="collapsed")
-        st.markdown('<div class="sb-label">Exec Period</div>', unsafe_allow_html=True)
-        exec_period = st.selectbox("__ep__", ["5d","10d","1mo"],
-                                   label_visibility="collapsed")
+    with c_htf:
+        htf_interval = st.selectbox("الإطار / HTF", ["1d", "1wk", "4h", "1h"])
 
-        st.divider()
+    with c_exec:
+        exec_interval = st.selectbox("تنفيذ / Exec", ["15m", "30m", "1h", "5m"])
 
-        with st.expander("&#9881;  Params"):
-            score_min = st.slider("Min Score",  1, 13, E.SCORE_MIN)
-            wick_min  = st.slider("Min Wick %", 5, 40, int(E.SWEEP_WICK_MIN))
-            n_candles = st.slider("Candles",    40, 150, 80)
+    with c_per:
+        htf_period = st.selectbox("الفترة / Period", ["6mo", "3mo", "1y", "2y"])
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    # Row 2 — Engine params + action buttons
+    p1, p2, p3, p4, p5, p6 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2, 1.8])
+    with p1:
+        exec_period = st.selectbox("Exec Period", ["5d", "10d", "1mo"],
+                                   label_visibility="visible")
+    with p2:
+        score_min = st.slider("الحد الأدنى للنقاط", 1, 13, E.SCORE_MIN,
+                              label_visibility="visible")
+    with p3:
+        wick_min = st.slider("Wick % Min", 5, 40, int(E.SWEEP_WICK_MIN),
+                             label_visibility="visible")
+    with p4:
+        n_candles = st.slider("عدد الشموع", 40, 150, 80,
+                              label_visibility="visible")
+    with p5:
+        grade_filter = st.multiselect("فلتر Grade",
+                                      ["A+", "A", "B", "C"],
+                                      default=["A+", "A"],
+                                      label_visibility="visible")
+    with p6:
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            run_btn = st.button("▶ تحليل", type="primary",
+                                use_container_width=True,
+                                disabled=(mode == "radar"))
+        with btn_c2:
+            scan_btn = st.button("📡 مسح الرادار",
+                                 use_container_width=True,
+                                 disabled=(mode == "single"))
 
-        run_btn  = st.button("&#9654;  Run Analysis", type="primary",
-                             use_container_width=True)
-        scan_btn = (st.button("&#9673;  Launch Radar", use_container_width=True)
-                    if mode == "Radar Scan" else False)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     cfg = dict(htf_interval=htf_interval, exec_interval=exec_interval,
                entry_interval="5m", htf_period=htf_period,
                exec_period=exec_period, score_min=score_min,
-               wick_min=wick_min, n_candles=n_candles)
+               wick_min=wick_min, n_candles=n_candles,
+               grade_filter=grade_filter)
 
-    if mode == "Radar Scan":
-        return mode, ticker, smt_ticker, watchlist, preset, cfg, run_btn, scan_btn, theme
-    return mode, ticker, smt_ticker, None, None, cfg, run_btn, scan_btn, theme
+    return mode, ticker, smt_ticker, watchlist, preset, cfg, run_btn, scan_btn
 
 
-# ─────────────────────────────────────────────
-#  SINGLE STOCK
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  KPI ROW — Single Stock
+# ══════════════════════════════════════════════════════════════
+def render_kpi_single(setup, df_htf, dol):
+    current    = float(df_htf["Close"].iloc[-1])
+    price_prev = float(df_htf["Close"].iloc[-2]) if len(df_htf) > 1 else current
+    chg_pct    = (current - price_prev) / price_prev * 100
+    sign       = "+" if chg_pct >= 0 else ""
+    chg_cls    = "green" if chg_pct >= 0 else "red"
+    bias_val   = "صعودي ▲" if (setup and setup.bias=="long") else \
+                 "هبوطي ▼" if (setup and setup.bias=="short") else "—"
+    bias_cls   = "green" if (setup and setup.bias=="long") else \
+                 "red"   if (setup and setup.bias=="short") else "teal"
 
+    cols = st.columns(6)
+    cards = [
+        (cols[0], "💰", f"{current:.2f}", "آخر سعر", "Last Price", "blue"),
+        (cols[1], "📊", f"{sign}{chg_pct:.2f}%", "التغيير اليومي", "Daily Change", chg_cls),
+        (cols[2], "🎯", f"{dol.price:.2f}" if dol else "—", "هدف السيولة DOL", "DOL Target", "amber"),
+        (cols[3], "⚖️", bias_val, "التحيز", "Bias", bias_cls),
+        (cols[4], "🏆", setup.grade if setup else "SKIP", "التقييم", "Grade",
+                        {"A+":"green","A":"blue","B":"amber"}.get(setup.grade if setup else "","teal")),
+        (cols[5], "📈", f"{setup.score}/13" if setup else "—", "النقاط", "Score", "purple"),
+    ]
+    for col, icon, val, ar, en, cls in cards:
+        col.markdown(kpi_card_html(icon, val, ar, en, cls), unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  KPI ROW — Radar
+# ══════════════════════════════════════════════════════════════
+def render_kpi_radar(df):
+    n_ap   = len(df[df["Grade"]=="A+"])
+    n_a    = len(df[df["Grade"]=="A"])
+    n_b    = len(df[df["Grade"]=="B"])
+    n_long = len(df[df["Bias"]=="Long"])
+    n_skip = len(df[df["Grade"].isin(["SKIP","ERR","TIMEOUT"])])
+    n_rr3  = 0
+    for v in df["Potential R:R"]:
+        try:
+            if float(str(v).replace("1:","")) >= 3: n_rr3 += 1
+        except Exception: pass
+
+    cols = st.columns(6)
+    cards = [
+        (cols[0], "🔍", len(df),    "إجمالي المسح",    "Total Scanned",  "blue"),
+        (cols[1], "⭐", n_ap,        "إعدادات A+",      "Grade A+ Setups","green"),
+        (cols[2], "✅", n_a,         "إعدادات A",       "Grade A Setups", "blue"),
+        (cols[3], "📉", n_b,         "إعدادات B",       "Grade B Setups", "amber"),
+        (cols[4], "▲",  n_long,      "توجه صعودي",      "Long Bias",      "teal"),
+        (cols[5], "⚡", n_rr3,       "R:R أعلى من 3",   "R:R ≥ 3",        "purple"),
+    ]
+    for col, icon, val, ar, en, cls in cards:
+        col.markdown(kpi_card_html(icon, val, ar, en, cls), unsafe_allow_html=True)
+
+    # Grade distribution bar
+    total = max(len(df), 1)
+    segs  = (["<div class='stat-seg ap'></div>"] * n_ap +
+             ["<div class='stat-seg aa'></div>"] * n_a  +
+             ["<div class='stat-seg bb'></div>"] * n_b  +
+             ["<div class='stat-seg sk'></div>"] * n_skip)
+    st.markdown(f'<div class="stat-bar">{"".join(segs[:100])}</div>',
+                unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  DECISION LOG
+# ══════════════════════════════════════════════════════════════
+def render_decision_log(setup, current_price):
+    if not setup:
+        st.markdown("""
+        <div class="dlog-card">
+          <div style="padding:32px;text-align:center;">
+            <div style="font-size:2.5rem;margin-bottom:12px;">📭</div>
+            <div style="font-family:var(--font-ar);font-size:1rem;
+                 font-weight:700;color:var(--gray-500);">لا يوجد إعداد صفقة</div>
+            <div style="font-size:0.8rem;color:var(--gray-400);margin-top:6px;">
+              النقاط أقل من الحد الأدنى المطلوب
+            </div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+        return
+
+    bias_ar  = "▲ شراء  LONG"  if setup.bias=="long"  else "▼ بيع  SHORT"
+    pill_html= grade_pill(setup.grade)
+
+    html = (f'<div class="dlog-card">'
+            f'<div class="dlog-card-head">'
+            f'<span class="dlog-bias-label">{bias_ar}</span>'
+            f'<span style="display:flex;align-items:center;gap:8px;">'
+            f'{pill_html}'
+            f'<span style="background:rgba(255,255,255,.2);border-radius:12px;'
+            f'padding:3px 10px;font-size:0.75rem;color:#fff;">'
+            f'{setup.score}/13</span></span></div>'
+            f'<div class="dlog-body">')
+
+    for entry in setup.decision_log:
+        dc = ("#10B981" if entry.score_delta>0 else
+              "#EF4444" if entry.score_delta<0 else "#9CA3AF")
+        ds = f"+{entry.score_delta}" if entry.score_delta >= 0 else str(entry.score_delta)
+        tr = entry.reasoning[:100] + ("…" if len(entry.reasoning)>100 else "")
+        rh = f'<div class="dlog-risk">⚠ {entry.risk_note[:90]}</div>' if entry.risk_note else ""
+        html += (f'<div class="dlog-entry">'
+                 f'<div class="dlog-stage">{entry.stage}</div>'
+                 f'<div class="dlog-finding">{entry.finding}</div>'
+                 f'<div class="dlog-reason">{tr}</div>{rh}'
+                 f'<div class="dlog-delta" style="color:{dc}">{ds} نقطة</div>'
+                 f'</div>')
+
+    pnl = ((current_price - setup.entry)/setup.entry*100
+           if setup.bias=="long"
+           else (setup.entry - current_price)/setup.entry*100)
+    pc  = "#10B981" if pnl>=0 else "#EF4444"
+    ps  = f"{'+' if pnl>=0 else ''}{pnl:.2f}%"
+
+    html += (f'</div><div class="dlog-pnl">'
+             f'<div class="dlog-pnl-lbl">الربح/الخسارة غير المحقق · Unrealised P&L</div>'
+             f'<div class="dlog-pnl-val" style="color:{pc}">{ps}</div>'
+             f'</div></div>')
+
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  TRADE TABLE
+# ══════════════════════════════════════════════════════════════
+def render_trade_table(setup):
+    sl_dist = abs(setup.entry - setup.stop_loss)
+    rows = [
+        {"cls":"tl-entry","Level":"الدخول  Entry",
+         "Price":f"{setup.entry:.4f}","Dist":"—","RR":"مرجع","Note":"FVG / OB midpoint"},
+        {"cls":"tl-sl","Level":"وقف الخسارة  SL",
+         "Price":f"{setup.stop_loss:.4f}",
+         "Dist":f"{abs(setup.entry-setup.stop_loss):.4f}",
+         "RR":"—","Note":"وراء منطقة Sweep"},
+    ]
+    for t in setup.targets:
+        if t.is_tp and sl_dist > 0:
+            rr = round(abs(t.price - setup.entry) / sl_dist, 2)
+            rows.append({"cls":"tl-tp","Level":f"هدف  {t.label}",
+                         "Price":f"{t.price:.4f}",
+                         "Dist":f"{abs(t.price-setup.entry):.4f}",
+                         "RR":f"1:{rr}",
+                         "Note":f"+{t.level}σ من نطاق التلاعب"})
+
+    html = ('<div class="tl-wrap"><table class="tl-table">'
+            '<thead><tr>'
+            '<th>المستوى</th><th>السعر</th>'
+            '<th>المسافة</th><th>R:R</th><th>الملاحظة</th>'
+            '</tr></thead><tbody>')
+    for r in rows:
+        html += (f'<tr class="{r["cls"]}">'
+                 f'<td>{r["Level"]}</td>'
+                 f'<td class="tl-price">{r["Price"]}</td>'
+                 f'<td class="tl-price">{r["Dist"]}</td>'
+                 f'<td><b>{r["RR"]}</b></td>'
+                 f'<td>{r["Note"]}</td></tr>')
+    html += "</tbody></table></div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  SINGLE STOCK VIEW
+# ══════════════════════════════════════════════════════════════
 def render_single(ticker, smt_ticker, cfg, run_btn):
-    st.markdown(f'<div class="page-header">'
-                f'<div class="ph-eyebrow">6-Stage Protocol &middot; ICT Smart Money</div>'
-                f'<h1 class="ph-title">{ticker}'
-                f'<span style="color:var(--gold-mid);font-size:1.1rem;'
-                f'font-family:var(--font-mono);letter-spacing:3px;">'
-                f'&nbsp;/&nbsp;{smt_ticker}</span></h1>'
-                f'<div class="ph-meta">{cfg["htf_interval"].upper()}'
-                f' &middot; {cfg["exec_interval"].upper()}'
-                f' &nbsp;&middot;&nbsp; {cfg["htf_period"]}'
-                f' &nbsp;&middot;&nbsp; Min Score: {cfg["score_min"]}'
-                f'</div></div>', unsafe_allow_html=True)
-
     if "single_result" not in st.session_state:
         st.session_state.single_result = None
 
     if run_btn:
-        with st.spinner(""):
+        with st.spinner("جارٍ التحليل…"):
             try:
                 E.SWEEP_WICK_MIN = float(cfg["wick_min"])
                 st.session_state.single_result = cached_run_engine(
@@ -359,157 +984,117 @@ def render_single(ticker, smt_ticker, cfg, run_btn):
                     cfg["htf_interval"], cfg["exec_interval"],
                     cfg["entry_interval"], cfg["htf_period"], cfg["exec_period"])
             except Exception as ex:
-                st.error(f"Engine error: {ex}"); return
+                st.error(f"خطأ في المحرك: {ex}"); return
 
     result = st.session_state.single_result
     if result is None:
-        st.markdown('<div class="skip-placeholder"><span class="skip-icon">&#9672;</span>'
-                    '<div class="skip-title">Awaiting Analysis</div>'
-                    '<div class="skip-body">Configure parameters in the sidebar<br>'
-                    'and press <strong>Run Analysis</strong> to begin.</div></div>',
-                    unsafe_allow_html=True)
-        _app_footer(); return
+        st.markdown("""
+        <div class="placeholder-card">
+          <span class="placeholder-icon">📊</span>
+          <div class="placeholder-title">في انتظار التحليل</div>
+          <div class="placeholder-body">
+            اضبط المعاملات في شريط الأدوات أعلاه<br>
+            واضغط <strong>▶ تحليل</strong> لبدء التحليل الكامل
+          </div>
+        </div>""", unsafe_allow_html=True)
+        app_footer(); return
 
     setup, df_htf, df_exec, df_m5, liq_levels, swings, dol = result
-    current    = float(df_htf["Close"].iloc[-1])
-    price_prev = float(df_htf["Close"].iloc[-2]) if len(df_htf) > 1 else current
-    chg_pct    = (current - price_prev) / price_prev * 100
-    chg_col    = "#3ecf8e" if chg_pct >= 0 else "#e05c6a"
-    sign       = "+" if chg_pct >= 0 else ""
+    current = float(df_htf["Close"].iloc[-1])
 
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    kpi_card(k1, "Last Price",  f"{current:.4f}",          "#5b9cf6")
-    kpi_card(k2, "Change 1D",   f"{sign}{chg_pct:.2f}%",   chg_col, "vs prior close")
-    kpi_card(k3, "DOL Target",  f"{dol.price:.4f}" if dol else "—",
-             "#c8a96e", f"{dol.kind}" if dol else "")
-    kpi_card(k4, "Bias",
-             "Long"  if (setup and setup.bias=="long")  else
-             "Short" if (setup and setup.bias=="short") else "—",
-             "#3ecf8e" if (setup and setup.bias=="long") else
-             "#e05c6a" if setup else "#3e4758")
-    kpi_card(k5, "Grade",
-             setup.grade if setup else "SKIP",
-             grade_color(setup.grade if setup else "SKIP"))
-    kpi_card(k6, "Score",
-             f"{setup.score}/13" if setup else "—",
-             "#c8a96e" if setup else "#3e4758", "confidence")
-
+    # KPI cards
+    sec_header("📊", "المؤشرات الرئيسية", "Key Metrics")
+    render_kpi_single(setup, df_htf, dol)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    chart_col, log_col = st.columns([2.5, 1], gap="medium")
+    # Chart + Decision Log
+    sec_header("📈", "حركة السعر والمستويات", "Price Action & Levels")
+    chart_col, log_col = st.columns([2.6, 1], gap="medium")
     with chart_col:
-        sec_header("Price Action &middot; DOL &middot; PD Arrays")
         fig = E.build_chart(df_htf, setup, liq_levels, swings, dol,
                             ticker=ticker, n_candles=cfg["n_candles"],
                             htf_interval=cfg["htf_interval"])
         st.plotly_chart(fig, use_container_width=True,
-                        config={"displayModeBar":True,"displaylogo":False,
-                                "modeBarButtonsToRemove":["select2d","lasso2d"]})
+                        config={"displayModeBar": True, "displaylogo": False,
+                                "modeBarButtonsToRemove": ["select2d","lasso2d"]})
     with log_col:
-        sec_header("Decision Log")
-        _render_decision_log(setup, current)
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_decision_log(setup, current)
 
+    # Trade table
     if setup:
         st.markdown("<br>", unsafe_allow_html=True)
-        sec_header("Trade Setup &middot; StdDev Targets")
-        _render_trade_table(setup, current)
+        sec_header("🎯", "خطة الصفقة", "Trade Setup & StdDev Targets")
+        render_trade_table(setup)
 
-    _app_footer()
-
-
-def _render_decision_log(setup, current_price):
-    if not setup:
-        st.markdown('<div class="dlog-panel"><div class="skip-placeholder"'
-                    ' style="border:none;padding:20px 10px;">'
-                    '<span class="skip-icon" style="font-size:1.8rem;">&#8212;</span>'
-                    '<div class="skip-title" style="font-size:0.9rem;">No Setup</div>'
-                    '<div class="skip-body">Score below minimum threshold.</div>'
-                    '</div></div>', unsafe_allow_html=True)
-        return
-
-    gc        = grade_color(setup.grade)
-    bias_sym  = "&#9650; LONG" if setup.bias == "long" else "&#9660; SHORT"
-    bias_col  = "#3ecf8e" if setup.bias == "long" else "#e05c6a"
-    pill_html = grade_pill(setup.grade)
-
-    html = (f'<div class="dlog-panel">'
-            f'<div class="dlog-header">'
-            f'<span class="dlog-bias" style="color:{bias_col}">{bias_sym}</span>'
-            f'<span class="dlog-score-badge">{pill_html}&nbsp;&nbsp;{setup.score}/13</span>'
-            f'</div>')
-
-    for entry in setup.decision_log:
-        dc  = ("#3ecf8e" if entry.score_delta>0 else
-               "#e05c6a" if entry.score_delta<0 else "#3e4758")
-        ds  = f"+{entry.score_delta}" if entry.score_delta >= 0 else str(entry.score_delta)
-        tr  = entry.reasoning[:95] + ("&#8230;" if len(entry.reasoning) > 95 else "")
-        rh  = (f'<div class="dlog-risk">&#9670; {entry.risk_note[:85]}</div>'
-               if entry.risk_note else "")
-        html += (f'<div class="dlog-entry">'
-                 f'<div class="dlog-stage-label">{entry.stage}</div>'
-                 f'<div class="dlog-finding">{entry.finding}</div>'
-                 f'<div class="dlog-reason">{tr}</div>{rh}'
-                 f'<div class="dlog-delta" style="color:{dc}">{ds} pts</div>'
-                 f'</div>')
-
-    pnl = ((current_price - setup.entry) / setup.entry * 100
-           if setup.bias == "long"
-           else (setup.entry - current_price) / setup.entry * 100)
-    pc  = "#3ecf8e" if pnl >= 0 else "#e05c6a"
-    ps  = f"{'+' if pnl>=0 else ''}{pnl:.2f}%"
-
-    html += (f'<div class="dlog-pnl-block">'
-             f'<div class="dlog-pnl-label">Unrealised P&amp;L &middot; {current_price:.4f}</div>'
-             f'<div class="dlog-pnl-value" style="color:{pc}">{ps}</div>'
-             f'</div></div>')
-    st.markdown(html, unsafe_allow_html=True)
+    app_footer()
 
 
-def _render_trade_table(setup, current_price):
-    sl_dist = abs(setup.entry - setup.stop_loss)
-    rows = [
-        {"cls":"tl-entry","Level":"Entry",
-         "Price":f"{setup.entry:.4f}","Distance":"&#8212;",
-         "RR":"ref","Note":"FVG / OB midpoint"},
-        {"cls":"tl-sl","Level":"Stop Loss",
-         "Price":f"{setup.stop_loss:.4f}",
-         "Distance":f"{abs(setup.entry-setup.stop_loss):.4f}",
-         "RR":"&#8212;","Note":"Behind sweep zone"},
-    ]
-    for t in setup.targets:
-        if t.is_tp and sl_dist > 0:
-            rr = round(abs(t.price - setup.entry) / sl_dist, 2)
-            rows.append({"cls":"tl-tp","Level":t.label,
-                         "Price":f"{t.price:.4f}",
-                         "Distance":f"{abs(t.price-setup.entry):.4f}",
-                         "RR":f"1:{rr}","Note":f"+{t.level}&#963; StdDev"})
+# ══════════════════════════════════════════════════════════════
+#  RADAR TABLE
+# ══════════════════════════════════════════════════════════════
+def _build_styled_table(show):
+    """Build colour-coded DataFrame — uses .map() (not .applymap())"""
+    def sg(v):
+        return {
+            "A+":   "background-color:#DCFCE7;color:#15803D;font-weight:700",
+            "A":    "background-color:#DBEAFE;color:#1D4ED8;font-weight:700",
+            "B":    "background-color:#FEF9C3;color:#854D0E;font-weight:600",
+            "SKIP": "color:#9CA3AF",
+            "ERR":  "color:#EF4444",
+        }.get(str(v), "color:#6B7280")
 
-    html = ('<table class="tl-table"><thead><tr>'
-            '<th>Level</th><th>Price</th><th>Distance</th>'
-            '<th>R:R</th><th>Note</th></tr></thead><tbody>')
-    for r in rows:
-        html += (f'<tr class="{r["cls"]}">'
-                 f'<td>{r["Level"]}</td><td>{r["Price"]}</td>'
-                 f'<td>{r["Distance"]}</td><td>{r["RR"]}</td>'
-                 f'<td>{r["Note"]}</td></tr>')
-    html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
+    def sb(v):
+        if "Long"  in str(v): return "color:#10B981;font-weight:700"
+        if "Short" in str(v): return "color:#EF4444;font-weight:700"
+        return "color:#9CA3AF"
+
+    def sr(v):
+        try:
+            r = float(str(v).replace("1:", ""))
+            if r >= 3: return "color:#10B981;font-weight:700"
+            if r >= 2: return "color:#F59E0B"
+            return "color:#9CA3AF"
+        except Exception: return "color:#9CA3AF"
+
+    def sf(v):
+        if "H1+M15+M5" in str(v): return "color:#10B981;font-weight:600"
+        if "H1+M15"    in str(v): return "color:#F59E0B"
+        return "color:#9CA3AF"
+
+    def ss(v):
+        return "color:#7C3AED;font-weight:600" if "Div" in str(v) else "color:#9CA3AF"
+
+    # .map() — not .applymap() — pandas >= 2.1 compatibility
+    return (show.style
+            .map(sg, subset=["Grade"])
+            .map(sb, subset=["Bias"])
+            .map(sr, subset=["Potential R:R"])
+            .map(sf, subset=["Fractal"])
+            .map(ss, subset=["SMT Signal"])
+            .set_properties(**{
+                "font-family": "'Tajawal','IBM Plex Sans Arabic',sans-serif",
+                "font-size":   "13px",
+                "text-align":  "right",
+            })
+            .set_table_styles([
+                {"selector": "thead th",
+                 "props": ("background:#F3F4F6;color:#6B7280;font-size:11px;"
+                           "font-weight:600;letter-spacing:1px;"
+                           "text-transform:uppercase;padding:10px 12px;"
+                           "border-bottom:2px solid #E5E7EB;text-align:right;")},
+                {"selector": "tbody td",
+                 "props": "padding:9px 12px;border-bottom:1px solid #F3F4F6;"},
+                {"selector": "tbody tr:hover td",
+                 "props": "background-color:#F9FAFB;"},
+            ]))
 
 
-# ─────────────────────────────────────────────
-#  RADAR SCAN
-# ─────────────────────────────────────────────
-
+# ══════════════════════════════════════════════════════════════
+#  RADAR SCAN VIEW
+# ══════════════════════════════════════════════════════════════
 def render_radar(watchlist, preset, cfg, scan_btn):
-    st.markdown(f'<div class="page-header">'
-                f'<div class="ph-eyebrow">Parallel Market Scan &middot; Smart Money</div>'
-                f'<h1 class="ph-title">Radar Scanner</h1>'
-                f'<div class="ph-meta">{preset} &nbsp;&middot;&nbsp; {len(watchlist)} symbols'
-                f' &nbsp;&middot;&nbsp; {cfg["htf_interval"].upper()}'
-                f' &middot; {cfg["exec_interval"].upper()}</div></div>',
-                unsafe_allow_html=True)
-
-    for key in ("radar_df","radar_preset","selected_ticker"):
+    for key in ("radar_df", "radar_preset", "selected_ticker"):
         if key not in st.session_state:
             st.session_state[key] = None
 
@@ -518,144 +1103,101 @@ def render_radar(watchlist, preset, cfg, scan_btn):
 
     df = st.session_state.radar_df
     if df is None:
-        st.markdown('<div class="skip-placeholder"><span class="skip-icon">&#9673;</span>'
-                    '<div class="skip-title">Radar Offline</div>'
-                    '<div class="skip-body">Select a watchlist and press'
-                    ' <strong>Launch Radar</strong>.</div></div>', unsafe_allow_html=True)
-        _app_footer(); return
+        st.markdown("""
+        <div class="placeholder-card">
+          <span class="placeholder-icon">📡</span>
+          <div class="placeholder-title">الرادار في وضع الاستعداد</div>
+          <div class="placeholder-body">
+            اختر قائمة المراقبة واضغط <strong>📡 مسح الرادار</strong><br>
+            لبدء المسح المتوازي لجميع الأسهم
+          </div>
+        </div>""", unsafe_allow_html=True)
+        app_footer(); return
 
-    # ── Horizontal filter bar ──────────────────────────────────
-    sec_header("Filters &middot; Sort &middot; Search")
-    f1, f2, f3, f4 = st.columns([2, 1.2, 1.2, 1.4])
-    with f1:
-        grade_filter = st.multiselect("Grade", ["A+","A","B","C"],
-                                      default=["A+","A"])
-    with f2:
-        bias_filter = st.selectbox("Bias", ["All","Long","Short"])
-    with f3:
-        rr_filter = st.selectbox("Min R:R", ["Any","≥ 1.5","≥ 2","≥ 3"])
-    with f4:
-        search = st.text_input("Symbol", placeholder="e.g. AAPL")
+    # KPI
+    sec_header("📊", "نتائج المسح", "Scan Summary")
+    render_kpi_radar(df)
+
+    # Extra search filter
+    s1, s2, s3 = st.columns([2, 1, 1.5])
+    with s1:
+        search = st.text_input("🔍 بحث بالرمز / Symbol Search", placeholder="AAPL")
+    with s2:
+        bias_filter = st.selectbox("التوجه / Bias", ["الكل / All", "Long", "Short"])
+    with s3:
+        rr_filter = st.selectbox("الحد الأدنى R:R",
+                                 ["الكل / Any", "≥ 1.5", "≥ 2", "≥ 3"])
 
     display = df.copy()
-    if grade_filter:
-        display = display[display["Grade"].isin(grade_filter)]
-    if bias_filter != "All":
+    gf = cfg.get("grade_filter", ["A+","A"])
+    if gf:
+        display = display[display["Grade"].isin(gf)]
+    if bias_filter != "الكل / All":
         display = display[display["Bias"] == bias_filter]
     if search:
         display = display[display["Ticker"].str.contains(search.upper(), na=False)]
-    if rr_filter != "Any":
+    if rr_filter != "الكل / Any":
         thresh = float(rr_filter.replace("≥ ", ""))
-        def _rr_ok(v):
-            try: return float(str(v).replace("1:", "")) >= thresh
+        def _ok(v):
+            try: return float(str(v).replace("1:","")) >= thresh
             except Exception: return False
-        display = display[display["Potential R:R"].apply(_rr_ok)]
+        display = display[display["Potential R:R"].apply(_ok)]
 
     SHOW = ["Ticker","SMT","Grade","Score","Bias","Entry","SL",
-            "TP1","TP2","Potential R:R","DOL","SMT Signal",
-            "Fractal","Killzone","PD Array"]
+            "TP1","TP2","Potential R:R","DOL","SMT Signal","Fractal","PD Array"]
     show = display[SHOW].copy()
 
-    # KPIs
-    st.markdown("<br>", unsafe_allow_html=True)
-    n_ap   = len(df[df["Grade"]=="A+"])
-    n_a    = len(df[df["Grade"]=="A"])
-    n_b    = len(df[df["Grade"]=="B"])
-    n_skip = len(df[df["Grade"].isin(["SKIP","ERR","TIMEOUT"])])
-    n_long = len(df[df["Bias"]=="Long"])
+    # Table in card wrapper
+    st.markdown('<div class="table-card">'
+                '<div class="table-card-header">'
+                '<span class="table-card-title">🏆 الإعدادات القابلة للتنفيذ · A+ أولاً</span>'
+                f'<span style="font-size:0.8rem;color:var(--gray-400)">'
+                f'{len(show)} من {len(df)} إعداد</span>'
+                '</div>', unsafe_allow_html=True)
 
-    k1,k2,k3,k4,k5,k6 = st.columns(6)
-    kpi_card(k1,"Scanned",   len(df), "#5b9cf6")
-    kpi_card(k2,"Grade A+",  n_ap,    "#3ecf8e","elite")
-    kpi_card(k3,"Grade A",   n_a,     "#5b9cf6","strong")
-    kpi_card(k4,"Grade B",   n_b,     "#c8a96e","developing")
-    kpi_card(k5,"Long Bias", n_long,  "#3ecf8e")
-    kpi_card(k6,"Skip/Err",  n_skip,  "#3e4758")
-
-    segs = (["<div class='stat-seg filled-ap'></div>"]*n_ap +
-            ["<div class='stat-seg filled-a'></div>"]*n_a +
-            ["<div class='stat-seg filled-b'></div>"]*n_b +
-            ["<div class='stat-seg filled-sk'></div>"]*n_skip)
-    st.markdown(f'<div class="stat-bar">{"".join(segs[:70])}</div>',
-                unsafe_allow_html=True)
-
-    sec_header("Actionable Setups &middot; A+ First")
-
-    # ── FIX #1: .map() instead of deprecated .applymap() ─────
-    def sg(v):
-        return {"A+":"color:#3ecf8e;font-weight:700;background:rgba(62,207,142,.08)",
-                "A": "color:#5b9cf6;font-weight:700;background:rgba(91,156,246,.08)",
-                "B": "color:#c8a96e;font-weight:600;background:rgba(200,169,110,.07)",
-                "SKIP":"color:#3e4758","ERR":"color:#e05c6a"}.get(str(v),"color:#484f58")
-    def sb(v):
-        if "Long"  in str(v): return "color:#3ecf8e;font-weight:600"
-        if "Short" in str(v): return "color:#e05c6a;font-weight:600"
-        return "color:#3e4758"
-    def sr(v):
-        try:
-            r = float(str(v).replace("1:",""))
-            return ("color:#3ecf8e;font-weight:600" if r>=3 else
-                    "color:#c8a96e" if r>=2 else "color:#5a6478")
-        except Exception: return "color:#3e4758"
-    def sf(v):
-        if "H1+M15+M5" in str(v): return "color:#3ecf8e"
-        if "H1+M15"    in str(v): return "color:#c8a96e"
-        return "color:#3e4758"
-    def ss(v):
-        return "color:#a78bfa;font-weight:600" if "Div" in str(v) else "color:#3e4758"
-
-    styled = (show.style
-              .map(sg, subset=["Grade"])
-              .map(sb, subset=["Bias"])
-              .map(sr, subset=["Potential R:R"])
-              .map(sf, subset=["Fractal"])
-              .map(ss, subset=["SMT Signal"])
-              .set_properties(**{"font-family":"JetBrains Mono,monospace",
-                                 "font-size":"13px"})
-              .set_table_styles([
-                  {"selector":"thead th",
-                   "props":"font-size:11px;letter-spacing:1.5px;"
-                           "text-transform:uppercase;padding:9px 10px;"},
-                  {"selector":"tbody tr:hover td",
-                   "props":"opacity:.85;"},
-                  {"selector":"tbody td",
-                   "props":"padding:8px 10px;"},
-              ]))
-
+    styled = _build_styled_table(show)
     st.dataframe(styled, use_container_width=True, hide_index=True, height=460)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # Drill-down
     st.markdown("<br>", unsafe_allow_html=True)
-    sec_header("Drill Down &middot; Full Analysis")
+    sec_header("🔬", "تحليل تفصيلي", "Drill Down · Full Analysis")
 
     if show.empty:
-        st.markdown('<div class="skip-body" style="text-align:center;padding:16px;">'
-                    'No results match current filters.</div>', unsafe_allow_html=True)
-        _app_footer(); return
+        st.info("لا توجد نتائج تطابق الفلاتر الحالية.")
+        app_footer(); return
 
-    dc1, dc2 = st.columns([3, 1])
-    with dc1:
-        selected = st.selectbox("Select symbol", show["Ticker"].tolist())
-    with dc2:
+    d1, d2, d3 = st.columns([2.5, 1, 1])
+    with d1:
+        selected = st.selectbox("اختر الرمز للتحليل / Select Symbol",
+                                show["Ticker"].tolist(),
+                                label_visibility="visible")
+    with d2:
         st.markdown("<br>", unsafe_allow_html=True)
-        drill_btn = st.button("&#9672;  Load Chart", use_container_width=True)
+        drill_btn = st.button("🔬 تحميل الشارت", use_container_width=True)
+    with d3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        clear_btn = st.button("✕ مسح", use_container_width=True)
 
     if drill_btn and selected:
         st.session_state.selected_ticker = selected
+    if clear_btn:
+        st.session_state.selected_ticker = None
 
     if st.session_state.selected_ticker:
-        _render_drill_down(st.session_state.selected_ticker, df, watchlist, cfg)
+        _render_drill(st.session_state.selected_ticker, df, watchlist, cfg)
 
-    _app_footer()
+    app_footer()
 
 
-def _render_drill_down(tkr, radar_df, watchlist, cfg):
+def _render_drill(tkr, radar_df, watchlist, cfg):
     smt_pair = next((s for t,s in watchlist if t==tkr), "QQQ")
     row_data = radar_df[radar_df["Ticker"]==tkr]
     grade    = row_data["Grade"].values[0] if not row_data.empty else "—"
-    gc       = grade_color(grade)
+    gc       = grade_color_hex(grade)
+    pill_html = grade_pill(grade)
 
-    with st.spinner(""):
+    with st.spinner(f"جارٍ تحميل {tkr}…"):
         try:
             result = cached_run_engine(
                 tkr, smt_pair,
@@ -664,38 +1206,41 @@ def _render_drill_down(tkr, radar_df, watchlist, cfg):
             setup, df_htf, _, _, liq_levels, swings, dol = result
             current = float(df_htf["Close"].iloc[-1])
         except Exception as ex:
-            st.error(f"Chart error: {ex}"); return
+            st.error(f"خطأ في الشارت: {ex}"); return
 
-    pill_html = grade_pill(grade)
-    st.markdown(f'<div class="drill-badge">'
-                f'<div><span class="drill-ticker" style="color:{gc}">{tkr}</span>'
-                f'&nbsp;&nbsp;{pill_html}</div>'
-                f'<div class="drill-meta">SMT: {smt_pair} &nbsp;&middot;&nbsp; '
-                f'{current:.4f} &nbsp;&middot;&nbsp; {cfg["htf_interval"].upper()}</div>'
-                f'</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="drill-badge">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="drill-sym" style="color:{gc}">{tkr}</span>
+        {pill_html}
+      </div>
+      <div class="drill-meta">
+        SMT: {smt_pair} &nbsp;·&nbsp; السعر: {current:.4f}
+        &nbsp;·&nbsp; {cfg['htf_interval'].upper()}
+      </div>
+    </div>""", unsafe_allow_html=True)
 
-    cc, lc = st.columns([2.5, 1], gap="medium")
+    cc, lc = st.columns([2.6, 1], gap="medium")
     with cc:
-        sec_header("Price Action Chart")
         fig = E.build_chart(df_htf, setup, liq_levels, swings, dol,
                             ticker=tkr, n_candles=cfg["n_candles"],
                             htf_interval=cfg["htf_interval"])
         st.plotly_chart(fig, use_container_width=True,
                         config={"displayModeBar":True,"displaylogo":False})
     with lc:
-        sec_header("Decision Log")
-        _render_decision_log(setup, current)
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_decision_log(setup, current)
 
     if setup:
         st.markdown("<br>", unsafe_allow_html=True)
-        sec_header("Trade Setup &middot; StdDev Targets")
-        _render_trade_table(setup, current)
+        sec_header("🎯", "خطة الصفقة", "Trade Setup & Targets")
+        render_trade_table(setup)
 
 
 def _run_radar_scan(watchlist, cfg):
     E.SWEEP_WICK_MIN = float(cfg["wick_min"])
     total, results = len(watchlist), []
-    pb = st.progress(0, text="Initialising radar…")
+    pb = st.progress(0, text="تهيئة الرادار…")
 
     def scan_one(pair):
         return cached_scan_pair(pair[0], pair[1],
@@ -718,36 +1263,44 @@ def _run_radar_scan(watchlist, cfg):
                        "_score_num":-2,"_grade_rank":101}
             results.append(row)
             done += 1
-            g = row.get("Grade","?")
-            sym = {"A+":"◈","A":"◆","B":"◇"}.get(g,"·")
-            pb.progress(done/total, text=f"Scanning {done}/{total} · {tkr} {sym} {g}")
+            g   = row.get("Grade","?")
+            sym = {"A+":"⭐","A":"✅","B":"⚠️"}.get(g,"·")
+            pb.progress(done/total,
+                        text=f"جارٍ المسح {done}/{total} · {tkr} {sym} {g}")
 
     pb.empty()
-    df = pd.DataFrame(results).sort_values(
-        by=["_grade_rank","_score_num"], ascending=[True,False]
-    ).reset_index(drop=True)
+    df = (pd.DataFrame(results)
+          .sort_values(by=["_grade_rank","_score_num"], ascending=[True,False])
+          .reset_index(drop=True))
     st.session_state.radar_df     = df
     st.session_state.radar_preset = cfg
 
     n_ap = len(df[df["Grade"]=="A+"])
     n_a  = len(df[df["Grade"]=="A"])
     n_b  = len(df[df["Grade"]=="B"])
-    st.success(f"Scan complete · {len(df)} symbols · A+: {n_ap} · A: {n_a} · B: {n_b}")
+    st.success(
+        f"✅ اكتمل المسح · {len(df)} سهماً  ·  "
+        f"A+: {n_ap}  ·  A: {n_a}  ·  B: {n_b}")
 
 
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
 #  MAIN
-# ─────────────────────────────────────────────
-
+# ══════════════════════════════════════════════════════════════
 def main():
-    out = render_sidebar()
-    (mode, ticker, smt_ticker, watchlist, preset,
-     cfg, run_btn, scan_btn, theme) = out
+    # Session state init
+    for k, v in [("single_result",None),("radar_df",None),
+                 ("radar_preset",None),("selected_ticker",None)]:
+        if k not in st.session_state:
+            st.session_state[k] = v
 
-    # Inject theme-aware CSS after sidebar so theme value is known
-    st.markdown(build_css(theme), unsafe_allow_html=True)
+    # Controls (no sidebar)
+    mode, ticker, smt_ticker, watchlist, preset, cfg, run_btn, scan_btn = render_controls()
 
-    if mode == "Single Stock":
+    # Header (after controls so mode is known)
+    render_header(mode, ticker, smt_ticker, preset, len(watchlist) if watchlist else 0)
+
+    # Content
+    if mode == "single":
         render_single(ticker, smt_ticker, cfg, run_btn)
     else:
         render_radar(watchlist, preset, cfg, scan_btn)
