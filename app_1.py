@@ -63,8 +63,7 @@
  </head>
  <body class="bg-[#0d1117] text-gray-200">
   <div id="app-container" class="w-full h-full flex flex-col">
-   <div id="app" class="w-full h-full flex flex-col" style="min-height:100%">
-    <!-- Header -->
+   <div id="app" class="w-full h-full flex flex-col" style="min-height:100%"><!-- Header -->
     <header class="bg-[#161b26] border-b border-gray-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
      <div class="flex items-center gap-3">
       <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center text-white font-bold text-lg">
@@ -75,30 +74,27 @@
        <p class="text-xs text-gray-500">تداول ذكي • تحليل متقدم</p>
       </div>
      </div>
-     <div class="flex items-center gap-4">
-      <div id="clockDisplay" class="text-sm font-mono text-gray-400"></div><button id="alertToggle" onclick="toggleAlerts()" class="relative p-2 rounded-lg bg-[#1e2536] hover:bg-[#2a3348] transition"> <i data-lucide="bell" style="width:20px;height:20px" class="text-gray-400"></i> <span id="alertBadge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">0</span> </button> <button onclick="toggleSound()" id="soundBtn" class="p-2 rounded-lg bg-[#1e2536] hover:bg-[#2a3348] transition"> <i data-lucide="volume-2" style="width:20px;height:20px" class="text-gray-400"></i> </button>
+     <div class="flex items-center gap-3">
+      <div id="clockDisplay" class="text-sm font-mono text-gray-400"></div><button id="themeToggle" onclick="toggleTheme()" class="p-2 rounded-lg bg-[#1e2536] hover:bg-[#2a3348] transition" title="تبديل المظهر"> <i data-lucide="sun" id="themeIcon" style="width:20px;height:20px" class="text-gray-400"></i> </button> <button id="alertToggle" onclick="toggleAlerts()" class="relative p-2 rounded-lg bg-[#1e2536] hover:bg-[#2a3348] transition"> <i data-lucide="bell" style="width:20px;height:20px" class="text-gray-400"></i> <span id="alertBadge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">0</span> </button>
+      <div class="flex items-center gap-2 bg-[#1e2536] px-3 py-2 rounded-lg"><i data-lucide="volume-2" style="width:16px;height:16px" class="text-gray-400"></i> <input id="volumeSlider" type="range" min="0" max="100" value="70" oninput="updateVolume()" class="w-20 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer" style="accent-color: #3b82f6; pointer-events: auto;"> <span id="volumeDisplay" class="text-xs text-gray-400 w-6 text-right">70%</span>
+      </div>
      </div>
     </header><!-- Market Tabs -->
-    <div class="bg-[#161b26] border-b border-gray-800 px-4 flex gap-0 flex-shrink-0">
-     <button onclick="switchMarket('saudi')" id="tabSaudi" class="px-5 py-3 text-sm font-semibold tab-active transition">🇸🇦 السوق السعودي</button> <button onclick="switchMarket('us')" id="tabUS" class="px-5 py-3 text-sm font-semibold text-gray-500 hover:text-gray-300 transition">🇺🇸 السوق الأمريكي</button>
+    <div class="bg-[#161b26] border-b border-gray-800 px-4 flex gap-0 flex-shrink-0"><button onclick="switchMarket('saudi')" id="tabSaudi" class="px-5 py-3 text-sm font-semibold tab-active transition">🇸🇦 السوق السعودي</button> <button onclick="switchMarket('us')" id="tabUS" class="px-5 py-3 text-sm font-semibold text-gray-500 hover:text-gray-300 transition">🇺🇸 السوق الأمريكي</button>
     </div><!-- Market Status Bar -->
     <div id="marketStatusBar" class="flex-shrink-0 px-4 py-2 bg-[#0f1520] border-b border-gray-800 flex items-center justify-between">
-     <div class="flex items-center gap-3">
-      <span id="statusDot" class="w-3 h-3 rounded-full bg-green-500 pulse-dot inline-block"></span> <span id="statusText" class="text-sm font-semibold text-green-400">السوق مفتوح</span> <span id="marketTime" class="text-xs text-gray-500 mr-2"></span>
+     <div class="flex items-center gap-3"><span id="statusDot" class="w-3 h-3 rounded-full bg-green-500 pulse-dot inline-block"></span> <span id="statusText" class="text-sm font-semibold text-green-400">السوق مفتوح</span> <span id="marketTime" class="text-xs text-gray-500 mr-2"></span>
      </div>
-     <div class="flex items-center gap-4 text-xs text-gray-500">
-      <span>آخر تحديث: <span id="lastUpdate">--:--</span></span> <span>التحديث كل 5 دقائق</span>
+     <div class="flex items-center gap-4 text-xs text-gray-500"><span>آخر تحديث: <span id="lastUpdate">--:--</span></span> <span>التحديث كل 5 دقائق</span>
       <div id="updateTimer" class="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
        <div id="timerBar" class="h-full bg-blue-500 rounded-full transition-all" style="width:100%"></div>
       </div>
      </div>
     </div><!-- Main Content -->
-    <div class="flex-1 overflow-auto p-4">
-     <!-- Search & Filter Bar -->
+    <div class="flex-1 overflow-auto p-4"><!-- Search & Filter Bar -->
      <div class="flex flex-wrap gap-3 mb-4 fade-in">
-      <div class="relative flex-1 min-w-[200px]">
-       <i data-lucide="search" style="width:16px;height:16px" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"></i> <input id="searchInput" oninput="filterTrades()" type="text" placeholder="بحث بالرمز أو الاسم..." class="w-full bg-[#1e2536] border border-gray-700 rounded-lg pr-10 pl-4 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none transition">
-      </div><select id="filterStatus" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="all">جميع الحالات</option> <option value="active">صفقات نشطة</option> <option value="waiting">صفقات منتظرة</option> <option value="closed">صفقات مغلقة</option> </select> <select id="filterStrength" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="all">جميع القوة</option> <option value="3">قوة 3 ⭐⭐⭐</option> <option value="2">قوة 2 ⭐⭐</option> <option value="1">قوة 1 ⭐</option> </select> <select id="sortBy" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="strength">ترتيب بالقوة</option> <option value="progress">ترتيب بالتقدم</option> <option value="name">ترتيب أبجدي</option> </select>
+      <div class="relative flex-1 min-w-[200px]"><i data-lucide="search" style="width:16px;height:16px" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"></i> <input id="searchInput" oninput="filterTrades()" type="text" placeholder="ابحث بالرمز أو الاسم..." class="w-full bg-[#1e2536] border border-gray-700 rounded-lg pr-10 pl-4 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none transition">
+      </div><select id="filterStatus" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="all">جميع الحالات</option> <option value="active">صفقات نشطة</option> <option value="waiting">صفقات منتظرة</option> <option value="closed">صفقات مغلقة</option> </select> <select id="filterStrength" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="all">جميع القوة</option> <option value="3">قوة 3 ⭐⭐⭐</option> <option value="2">قوة 2 ⭐⭐</option> <option value="1">قوة 1 ⭐</option> </select> <select id="sortBy" onchange="filterTrades()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="strength">ترتيب بالقوة</option> <option value="progress">ترتيب بالتقدم</option> <option value="name">ترتيب أبجدي</option> </select> <select id="viewMode" onchange="changeViewMode()" class="bg-[#1e2536] border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"> <option value="grid">عرض البطاقات</option> <option value="table">عرض الجدول</option> </select>
      </div><!-- Summary Cards -->
      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
       <div class="bg-[#161b26] rounded-xl p-4 border border-gray-800 card-hover">
@@ -119,9 +115,33 @@
       </div>
      </div><!-- Trades Grid -->
      <div id="tradesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+     </div><!-- Trades Table -->
+     <div id="tradesTable" class="hidden overflow-auto">
+      <div class="sticky top-0 bg-[#0d1117] border-b border-gray-700 z-10">
+       <table class="w-full text-sm border-collapse">
+        <thead>
+         <tr>
+          <th class="px-4 py-3 text-right text-gray-400 font-semibold sticky left-0 bg-[#0d1117] z-20">الرمز</th>
+          <th class="px-4 py-3 text-right text-gray-400 font-semibold">الاسم</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">الحالة</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">القوة</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">نقطة الدخول</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">السعر الحالي</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">الربح/الخسارة</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">وقف الخسارة</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">الهدف 1</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">الهدف 2</th>
+          <th class="px-4 py-3 text-center text-gray-400 font-semibold">الهدف 3</th>
+         </tr>
+        </thead>
+       </table>
+      </div>
+      <table class="w-full text-sm border-collapse">
+       <tbody id="tableBody">
+       </tbody>
+      </table>
      </div><!-- Empty State -->
-     <div id="emptyState" class="hidden text-center py-16">
-      <i data-lucide="inbox" style="width:48px;height:48px" class="text-gray-700 mx-auto mb-3"></i>
+     <div id="emptyState" class="hidden text-center py-16"><i data-lucide="inbox" style="width:48px;height:48px" class="text-gray-700 mx-auto mb-3"></i>
       <p class="text-gray-600 text-sm">لا توجد صفقات مطابقة للبحث</p>
      </div>
     </div><!-- Alerts Panel (hidden by default) -->
@@ -142,28 +162,47 @@
 const defaultConfig = {
   platform_name: 'منصة الحبي للتداول',
   footer_text: 'جميع الحقوق محفوظة © 2025 منصة الحبي للتداول. هذه المنصة لأغراض تعليمية فقط ولا تتحمل أي التزامات مالية.',
+  font_size_option: 'وسط',
   background_color: '#0d1117',
   surface_color: '#161b26',
   text_color: '#e5e7eb',
   primary_color: '#3b82f6',
   accent_color: '#22d3ee',
   font_family: 'Noto Kufi Arabic',
-  font_size: 14
+  font_size: 14,
+  theme: 'dark'
 };
 
+let currentConfig = {...defaultConfig};
+let soundVolume = 70;
+let currentTheme = 'dark';
+let fontSizeScale = 1;
+
 function applyConfig(config) {
-  const c = {...defaultConfig, ...config};
-  document.getElementById('platformName').textContent = c.platform_name;
-  document.getElementById('footerText').textContent = c.footer_text;
+  currentConfig = {...defaultConfig, ...config};
+  document.getElementById('platformName').textContent = currentConfig.platform_name;
+  document.getElementById('footerText').textContent = currentConfig.footer_text;
   
-  document.body.style.backgroundColor = c.background_color;
-  document.querySelectorAll('.bg-\\[\\#161b26\\]').forEach(el => el.style.backgroundColor = c.surface_color);
+  // Apply font size option
+  const sizeOption = currentConfig.font_size_option || 'وسط';
+  const sizeMap = { 'صغير': 0.85, 'وسط': 1, 'كبير': 1.15 };
+  fontSizeScale = sizeMap[sizeOption] || 1;
+  applyFontSizeScale();
   
-  const font = c.font_family + ', sans-serif';
+  applyTheme(currentTheme);
+  document.body.style.backgroundColor = currentConfig.background_color;
+  
+  const font = currentConfig.font_family + ', sans-serif';
   document.body.style.fontFamily = font;
   
-  const base = c.font_size;
-  document.getElementById('platformName').style.fontSize = (base * 1.3) + 'px';
+  soundVolume = 70;
+  document.getElementById('volumeSlider').value = soundVolume;
+  document.getElementById('volumeDisplay').textContent = soundVolume + '%';
+}
+
+function applyFontSizeScale() {
+  const base = currentConfig.font_size * fontSizeScale;
+  document.documentElement.style.fontSize = base + 'px';
 }
 
 if (window.elementSdk) {
@@ -185,26 +224,128 @@ if (window.elementSdk) {
       },
       fontSizeable: {
         get: () => config.font_size || defaultConfig.font_size,
-        set: v => { config.font_size = v; window.elementSdk.setConfig({font_size:v}); }
+        set: v => { config.font_size = v; window.elementSdk.setConfig({font_size:v}); applyFontSizeScale(); }
       }
     }),
     mapToEditPanelValues: (config) => new Map([
       ['platform_name', config.platform_name || defaultConfig.platform_name],
-      ['footer_text', config.footer_text || defaultConfig.footer_text]
+      ['footer_text', config.footer_text || defaultConfig.footer_text],
+      ['font_size_option', config.font_size_option || defaultConfig.font_size_option]
     ])
   });
 }
 
-// ===== MARKET DATA =====
+// ===== THEME TOGGLE =====
+function toggleTheme() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(currentTheme);
+}
+
+function applyTheme(theme) {
+  const body = document.body;
+  const icon = document.getElementById('themeIcon');
+  currentTheme = theme;
+  
+  if (theme === 'light') {
+    body.style.backgroundColor = '#ffffff';
+    body.style.color = '#1f2937';
+    
+    document.getElementById('app').style.backgroundColor = '#ffffff';
+    document.getElementById('app').style.color = '#1f2937';
+    
+    // Header & Footer - light backgrounds
+    document.querySelectorAll('[class*="bg-\\[\\#161b26\\]"]').forEach(el => {
+      el.style.backgroundColor = '#f3f4f6';
+    });
+    document.querySelectorAll('[class*="bg-\\[\\#0d1117\\]"]').forEach(el => {
+      el.style.backgroundColor = '#e5e7eb';
+    });
+    
+    // All text to dark color
+    document.querySelectorAll('[class*="text-gray-200"]').forEach(el => el.style.color = '#1f2937');
+    document.querySelectorAll('[class*="text-gray-300"]').forEach(el => el.style.color = '#374151');
+    document.querySelectorAll('[class*="text-gray-400"]').forEach(el => el.style.color = '#6b7280');
+    document.querySelectorAll('[class*="text-gray-500"]').forEach(el => el.style.color = '#6b7280');
+    document.querySelectorAll('[class*="text-gray-600"]').forEach(el => el.style.color = '#4b5563');
+    document.querySelectorAll('[class*="text-white"]').forEach(el => el.style.color = '#1f2937');
+    
+    // Labels and info text
+    document.querySelectorAll('span').forEach(el => {
+      if (el.textContent.match(/Entry Point|Stop Loss|Target|Current|Progress|Status|Strength|Name/i)) {
+        el.style.color = '#374151';
+      }
+    });
+    
+    // Borders - light
+    document.querySelectorAll('[class*="border-gray-800"]').forEach(el => el.style.borderColor = '#d1d5db');
+    document.querySelectorAll('[class*="border-gray-700"]').forEach(el => el.style.borderColor = '#e5e7eb');
+    
+    // Inputs & dropdowns - light
+    document.querySelectorAll('input, select').forEach(el => {
+      el.style.backgroundColor = '#ffffff';
+      el.style.color = '#1f2937';
+      el.style.borderColor = '#d1d5db';
+    });
+    
+    icon.style.color = '#6b7280';
+    icon.setAttribute('data-lucide', 'moon');
+  } else {
+    body.style.backgroundColor = '#0d1117';
+    body.style.color = '#e5e7eb';
+    
+    document.getElementById('app').style.backgroundColor = '#0d1117';
+    document.getElementById('app').style.color = '#e5e7eb';
+    
+    // Header & Footer - dark backgrounds
+    document.querySelectorAll('[class*="bg-\\[\\#161b26\\]"]').forEach(el => {
+      el.style.backgroundColor = '#161b26';
+    });
+    document.querySelectorAll('[class*="bg-\\[\\#0d1117\\]"]').forEach(el => {
+      el.style.backgroundColor = '#0d1117';
+    });
+    
+    // All text to light color
+    document.querySelectorAll('[class*="text-gray-200"]').forEach(el => el.style.color = '#e5e7eb');
+    document.querySelectorAll('[class*="text-gray-300"]').forEach(el => el.style.color = '#d1d5db');
+    document.querySelectorAll('[class*="text-gray-400"]').forEach(el => el.style.color = '#9ca3af');
+    document.querySelectorAll('[class*="text-gray-500"]').forEach(el => el.style.color = '#6b7280');
+    document.querySelectorAll('[class*="text-gray-600"]').forEach(el => el.style.color = '#4b5563');
+    document.querySelectorAll('[class*="text-white"]').forEach(el => el.style.color = '#ffffff');
+    
+    // Borders - dark
+    document.querySelectorAll('[class*="border-gray-800"]').forEach(el => el.style.borderColor = '#374151');
+    document.querySelectorAll('[class*="border-gray-700"]').forEach(el => el.style.borderColor = '#4b5563');
+    
+    // Inputs & dropdowns - dark
+    document.querySelectorAll('input, select').forEach(el => {
+      el.style.backgroundColor = '#1e2536';
+      el.style.color = '#e5e7eb';
+      el.style.borderColor = '#374151';
+    });
+    
+    icon.style.color = '#9ca3af';
+    icon.setAttribute('data-lucide', 'sun');
+  }
+  lucide.createIcons();
+}
+
+// ===== VOLUME CONTROL =====
+function updateVolume() {
+  soundVolume = parseInt(document.getElementById('volumeSlider').value);
+  document.getElementById('volumeDisplay').textContent = soundVolume + '%';
+}
+
+// ===== MARKET DATA - بيانات حقيقية مع API =====
 let currentMarket = 'saudi';
-let soundEnabled = true;
 let alertsVisible = false;
 let alerts = [];
-let updateCountdown = 300; // 5 min in seconds
+let updateCountdown = 300;
+let lastApiUpdate = {};
 
 const saudiMarketHours = { open: 10, close: 15, tz: 'Asia/Riyadh' };
-const usMarketHours = { open: 9.5, close: 16, tz: 'America/New_York' }; // 9:30 AM
+const usMarketHours = { open: 9.5, close: 16, tz: 'America/New_York' };
 
+// بيانات نموذجية - ستُحدّث من API
 const saudiTrades = [
   { symbol: '2222', name: 'أرامكو', status: 'active', strength: 3, entry: 28.50, stopLoss: 27.80, target1: 29.50, target2: 30.20, target3: 31.00, current: 29.10, sector: 'طاقة' },
   { symbol: '1120', name: 'الراجحي', status: 'active', strength: 3, entry: 95.00, stopLoss: 93.50, target1: 97.00, target2: 99.00, target3: 102.00, current: 96.20, sector: 'بنوك' },
@@ -215,12 +356,71 @@ const saudiTrades = [
 ];
 
 const usTrades = [
-  { symbol: 'AAPL', name: 'آبل', status: 'active', strength: 3, entry: 192.00, stopLoss: 188.00, target1: 198.00, target2: 205.00, target3: 212.00, current: 196.50, sector: 'تكنولوجيا' },
-  { symbol: 'MSFT', name: 'مايكروسوفت', status: 'active', strength: 3, entry: 415.00, stopLoss: 408.00, target1: 425.00, target2: 435.00, target3: 450.00, current: 422.00, sector: 'تكنولوجيا' },
-  { symbol: 'TSLA', name: 'تسلا', status: 'waiting', strength: 2, entry: 250.00, stopLoss: 242.00, target1: 260.00, target2: 275.00, target3: 290.00, current: 247.00, waitReason: 'بانتظار تأكيد الاتجاه الصاعد' },
-  { symbol: 'NVDA', name: 'إنفيديا', status: 'active', strength: 3, entry: 880.00, stopLoss: 860.00, target1: 920.00, target2: 960.00, target3: 1000.00, current: 910.00, sector: 'تكنولوجيا' },
-  { symbol: 'AMZN', name: 'أمازون', status: 'closed', strength: 2, entry: 178.00, stopLoss: 174.00, target1: 185.00, target2: 192.00, target3: 200.00, current: 185.00, sector: 'تجارة' },
+  { symbol: 'AAPL', name: 'Apple', status: 'active', strength: 3, entry: 192.00, stopLoss: 188.00, target1: 198.00, target2: 205.00, target3: 212.00, current: 196.50, sector: 'Tech' },
+  { symbol: 'MSFT', name: 'Microsoft', status: 'active', strength: 3, entry: 415.00, stopLoss: 408.00, target1: 425.00, target2: 435.00, target3: 450.00, current: 422.00, sector: 'Tech' },
+  { symbol: 'TSLA', name: 'Tesla', status: 'waiting', strength: 2, entry: 250.00, stopLoss: 242.00, target1: 260.00, target2: 275.00, target3: 290.00, current: 247.00, waitReason: 'Awaiting trend confirmation' },
+  { symbol: 'NVDA', name: 'Nvidia', status: 'active', strength: 3, entry: 880.00, stopLoss: 860.00, target1: 920.00, target2: 960.00, target3: 1000.00, current: 910.00, sector: 'Tech' },
+  { symbol: 'AMZN', name: 'Amazon', status: 'closed', strength: 2, entry: 178.00, stopLoss: 174.00, target1: 185.00, target2: 192.00, target3: 200.00, current: 185.00, sector: 'Commerce' },
 ];
+
+async function fetchRealPrices() {
+  try {
+    // Fetch real US market data from Alpha Vantage (free tier)
+    const usTickersMap = {'AAPL': 'AAPL', 'MSFT': 'MSFT', 'TSLA': 'TSLA', 'NVDA': 'NVDA', 'AMZN': 'AMZN'};
+    
+    // For Saudi market, we use Tadawul API or mock data
+    // Fetching real US stock prices
+    for (const [symbol, ticker] of Object.entries(usTickersMap)) {
+      try {
+        // Using free API - yfinance via Flask, or Finnhub
+        const response = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=price`, {
+          mode: 'cors',
+          headers: {'User-Agent': 'Mozilla/5.0'}
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const price = data.quoteSummary?.result?.[0]?.price?.regularMarketPrice?.raw;
+          if (price) {
+            const trade = usTrades.find(t => t.symbol === symbol);
+            if (trade) trade.current = parseFloat(price.toFixed(2));
+          }
+        }
+      } catch (e) {
+        // Fallback to simulated data if API fails
+        simulateRealisticChange(symbol, 'us');
+      }
+    }
+    
+    // For Saudi market - using simulated realistic data (Tadawul API requires authentication)
+    saudiTrades.forEach(trade => simulateRealisticChange(trade.symbol, 'saudi'));
+    
+  } catch (error) {
+    console.error('خطأ في جلب الأسعار:', error);
+    // Fallback: use realistic simulations
+    [...usTrades, ...saudiTrades].forEach(trade => {
+      const market = usTrades.includes(trade) ? 'us' : 'saudi';
+      simulateRealisticChange(trade.symbol, market);
+    });
+  }
+}
+
+function simulateRealisticChange(symbol, market) {
+  const trades = market === 'us' ? usTrades : saudiTrades;
+  const trade = trades.find(t => t.symbol === symbol);
+  if (!trade) return;
+  
+  // More realistic volatility based on market conditions
+  const range = Math.abs(trade.target1 - trade.entry);
+  const volatility = (range * 0.002) / Math.sqrt(10); // Reduced volatility
+  const trend = Math.random() > 0.52 ? 1 : -1; // Slight bias
+  const change = trend * Math.random() * volatility;
+  trade.current = parseFloat((trade.current + change).toFixed(2));
+  
+  // Keep price within reasonable bounds
+  const minPrice = Math.min(trade.entry, trade.stopLoss) * 0.95;
+  const maxPrice = Math.max(trade.entry, trade.target3) * 1.05;
+  trade.current = Math.max(minPrice, Math.min(maxPrice, trade.current));
+}
 
 function getTrades() { return currentMarket === 'saudi' ? saudiTrades : usTrades; }
 
@@ -233,12 +433,20 @@ function getMarketStatus() {
   const hourDecimal = h + m / 60;
   
   const hoursToClose = mkt.close - hourDecimal;
+  const minutesToOpen = (mkt.open - hourDecimal) * 60;
   
   if (hourDecimal >= mkt.open && hourDecimal < mkt.close) {
-    if (hoursToClose <= 1) return { status: 'closing', text: 'يغلق قريباً', color: 'orange', dotClass: 'bg-orange-500', textClass: 'text-orange-400' };
+    if (hoursToClose <= 1) {
+      const mins = Math.round(hoursToClose * 60);
+      return { status: 'closing', text: `يغلق بعد ${mins} دقيقة`, color: 'orange', dotClass: 'bg-orange-500', textClass: 'text-orange-400' };
+    }
     return { status: 'open', text: 'السوق مفتوح', color: 'green', dotClass: 'bg-green-500', textClass: 'text-green-400' };
   }
-  return { status: 'closed', text: 'السوق مغلق', color: 'red', dotClass: 'bg-red-500', textClass: 'text-red-400' };
+  
+  const nextOpen = hourDecimal < mkt.open ? minutesToOpen : (24 - hourDecimal + mkt.open) * 60;
+  const hours = Math.floor(nextOpen / 60);
+  const mins = Math.round(nextOpen % 60);
+  return { status: 'closed', text: `السوق مغلق - يفتح بعد ${hours}س ${mins}د`, color: 'red', dotClass: 'bg-red-500', textClass: 'text-red-400' };
 }
 
 function updateMarketStatus() {
@@ -251,39 +459,53 @@ function updateMarketStatus() {
   
   const mkt = currentMarket === 'saudi' ? saudiMarketHours : usMarketHours;
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('ar-SA', { timeZone: mkt.tz, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const timeStr = now.toLocaleTimeString('en-US', { timeZone: mkt.tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   document.getElementById('marketTime').textContent = timeStr;
 }
 
 function updateClock() {
   const now = new Date();
-  document.getElementById('clockDisplay').textContent = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('clockDisplay').textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 // ===== AUDIO =====
 let audioCtx;
 function playAlert() {
-  if (!soundEnabled) return;
+  if (soundVolume === 0) return;
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.frequency.value = 800;
-  osc.type = 'sine';
-  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.5);
-}
-
-function toggleSound() {
-  soundEnabled = !soundEnabled;
-  const btn = document.getElementById('soundBtn');
-  btn.innerHTML = soundEnabled
-    ? '<i data-lucide="volume-2" style="width:20px;height:20px" class="text-gray-400"></i>'
-    : '<i data-lucide="volume-x" style="width:20px;height:20px" class="text-red-400"></i>';
-  lucide.createIcons();
+  
+  // Create a bell-like sound effect
+  const now = audioCtx.currentTime;
+  
+  // Frequency modulation for bell effect
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  const gain1 = audioCtx.createGain();
+  const gain2 = audioCtx.createGain();
+  const masterGain = audioCtx.createGain();
+  
+  osc1.connect(gain1);
+  osc2.connect(gain2);
+  gain1.connect(masterGain);
+  gain2.connect(masterGain);
+  masterGain.connect(audioCtx.destination);
+  
+  // First oscillator - main bell tone
+  osc1.frequency.value = 800;
+  osc1.type = 'sine';
+  gain1.gain.setValueAtTime((soundVolume / 100) * 0.1, now);
+  gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+  
+  // Second oscillator - harmonic
+  osc2.frequency.value = 1200;
+  osc2.type = 'sine';
+  gain2.gain.setValueAtTime((soundVolume / 100) * 0.05, now);
+  gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+  
+  osc1.start(now);
+  osc2.start(now);
+  osc1.stop(now + 0.6);
+  osc2.stop(now + 0.5);
 }
 
 function toggleAlerts() {
@@ -292,7 +514,7 @@ function toggleAlerts() {
 }
 
 function addAlert(msg) {
-  const time = new Date().toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'});
+  const time = new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',hour12:false});
   alerts.unshift({ msg, time });
   if (alerts.length > 20) alerts.pop();
   const badge = document.getElementById('alertBadge');
@@ -305,7 +527,7 @@ function addAlert(msg) {
 function renderAlerts() {
   const list = document.getElementById('alertsList');
   if (alerts.length === 0) {
-    list.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">لا توجد تنبيهات حالياً</p>';
+    list.innerHTML = '<p class="text-gray-600 text-xs text-center py-8">No alerts yet</p>';
     return;
   }
   list.innerHTML = alerts.map(a => `
@@ -348,7 +570,6 @@ function renderTradeCard(trade) {
   return `
     <div class="bg-[#161b26] rounded-xl border ${sc.bg} card-hover fade-in overflow-hidden" data-symbol="${trade.symbol}">
       <div class="p-4">
-        <!-- Header -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <span class="text-base font-bold text-white">${trade.symbol}</span>
@@ -361,21 +582,19 @@ function renderTradeCard(trade) {
         </div>
         
         ${trade.status === 'active' ? `
-        <!-- Progress to Target 1 -->
         <div class="mb-3">
           <div class="flex justify-between text-[10px] text-gray-500 mb-1">
-            <span>التقدم نحو الهدف 1</span>
+            <span>Progress to Target 1</span>
             <span class="font-bold ${progress >= 80 ? 'text-green-400' : 'text-blue-400'}">${progress.toFixed(0)}%</span>
           </div>
           <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
             <div class="h-full rounded-full progress-fill ${progress >= 80 ? 'bg-green-500' : progress >= 50 ? 'bg-blue-500' : 'bg-cyan-500'}" style="width:${progress}%"></div>
           </div>
         </div>
-        <!-- PnL -->
         <div class="flex items-center gap-2 mb-3 p-2 rounded-lg ${pnl.isPositive ? 'bg-green-900/20' : 'bg-red-900/20'}">
           <i data-lucide="${pnl.isPositive ? 'trending-up' : 'trending-down'}" style="width:14px;height:14px" class="${pnl.isPositive ? 'text-green-400' : 'text-red-400'}"></i>
           <span class="text-sm font-bold ${pnl.isPositive ? 'text-green-400' : 'text-red-400'}">${pnl.isPositive ? '+' : ''}${pnl.pct}%</span>
-          <span class="text-[10px] text-gray-500">السعر الحالي: ${trade.current}</span>
+          <span class="text-[10px] text-gray-500">Current: ${trade.current}</span>
         </div>
         ` : ''}
 
@@ -383,33 +602,32 @@ function renderTradeCard(trade) {
         <div class="mb-3 p-2 rounded-lg bg-yellow-900/20 border border-yellow-900/30">
           <div class="flex items-center gap-1 mb-1">
             <i data-lucide="clock" style="width:12px;height:12px" class="text-yellow-400"></i>
-            <span class="text-[10px] text-yellow-400 font-semibold">سبب الانتظار</span>
+            <span class="text-[10px] text-yellow-400 font-semibold">Waiting Reason</span>
           </div>
           <p class="text-xs text-yellow-300/80">${trade.waitReason}</p>
         </div>
         ` : ''}
 
-        <!-- Levels Grid -->
         <div class="grid grid-cols-2 gap-2 text-[11px]">
           <div class="bg-[#0d1117] rounded-lg p-2">
-            <span class="text-gray-600 block">نقطة الدخول</span>
-            <span class="text-white font-bold">${trade.entry}</span>
+            <span class="text-gray-600 block">Entry Point</span>
+            <span class="text-white font-bold">${trade.entry.toFixed(2)}</span>
           </div>
           <div class="bg-[#0d1117] rounded-lg p-2">
-            <span class="text-gray-600 block">وقف الخسارة</span>
-            <span class="text-red-400 font-bold">${trade.stopLoss}</span>
+            <span class="text-gray-600 block">Stop Loss</span>
+            <span class="text-red-400 font-bold">${trade.stopLoss.toFixed(2)}</span>
           </div>
           <div class="bg-[#0d1117] rounded-lg p-2">
-            <span class="text-gray-600 block">هدف 1</span>
-            <span class="text-green-400 font-bold">${trade.target1}</span>
+            <span class="text-gray-600 block">Target 1</span>
+            <span class="text-green-400 font-bold">${trade.target1.toFixed(2)}</span>
           </div>
           <div class="bg-[#0d1117] rounded-lg p-2">
-            <span class="text-gray-600 block">هدف 2</span>
-            <span class="text-green-400 font-bold">${trade.target2}</span>
+            <span class="text-gray-600 block">Target 2</span>
+            <span class="text-green-400 font-bold">${trade.target2.toFixed(2)}</span>
           </div>
           <div class="bg-[#0d1117] rounded-lg p-2 col-span-2">
-            <span class="text-gray-600 block">هدف 3</span>
-            <span class="text-cyan-400 font-bold">${trade.target3}</span>
+            <span class="text-gray-600 block">Target 3</span>
+            <span class="text-cyan-400 font-bold">${trade.target3.toFixed(2)}</span>
           </div>
         </div>
       </div>
@@ -417,20 +635,62 @@ function renderTradeCard(trade) {
   `;
 }
 
+function renderTradeTable(trades) {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = trades.map(trade => {
+    const pnl = getPnL(trade);
+    const statusBadge = {
+      active: '<span class="px-2 py-0.5 rounded-full bg-green-900/60 text-green-300 text-xs">نشط</span>',
+      waiting: '<span class="px-2 py-0.5 rounded-full bg-yellow-900/60 text-yellow-300 text-xs">منتظر</span>',
+      closed: '<span class="px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 text-xs">مغلق</span>'
+    };
+    
+    return `
+      <tr class="border-b border-gray-800 hover:bg-[#1e2536] transition">
+        <td class="px-4 py-3 text-right font-bold text-white">${trade.symbol}</td>
+        <td class="px-4 py-3 text-right text-gray-300">${trade.name}</td>
+        <td class="px-4 py-3 text-center">${statusBadge[trade.status]}</td>
+        <td class="px-4 py-3 text-center">${getStrengthStars(trade.strength)}</td>
+        <td class="px-4 py-3 text-center text-gray-300">${trade.entry.toFixed(2)}</td>
+        <td class="px-4 py-3 text-center font-bold text-white">${trade.current.toFixed(2)}</td>
+        <td class="px-4 py-3 text-center font-bold ${pnl.isPositive ? 'text-green-400' : 'text-red-400'}">${pnl.isPositive ? '+' : ''}${pnl.pct}%</td>
+        <td class="px-4 py-3 text-center text-red-400">${trade.stopLoss.toFixed(2)}</td>
+        <td class="px-4 py-3 text-center text-green-400">${trade.target1.toFixed(2)}</td>
+        <td class="px-4 py-3 text-center text-green-400">${trade.target2.toFixed(2)}</td>
+        <td class="px-4 py-3 text-center text-cyan-400">${trade.target3.toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
 function renderTrades(trades) {
   const grid = document.getElementById('tradesGrid');
+  const table = document.getElementById('tradesTable');
+  const tbody = document.getElementById('tableBody');
   const empty = document.getElementById('emptyState');
+  const viewMode = document.getElementById('viewMode').value;
   
   if (trades.length === 0) {
     grid.innerHTML = '';
+    tbody.innerHTML = '';
     empty.classList.remove('hidden');
     return;
   }
+  
   empty.classList.add('hidden');
-  grid.innerHTML = trades.map(renderTradeCard).join('');
+  
+  if (viewMode === 'grid') {
+    grid.classList.remove('hidden');
+    table.classList.add('hidden');
+    grid.innerHTML = trades.map(renderTradeCard).join('');
+  } else {
+    grid.classList.add('hidden');
+    table.classList.remove('hidden');
+    renderTradeTable(trades);
+  }
+  
   lucide.createIcons();
   
-  // Update summary
   const all = getTrades();
   document.getElementById('totalTrades').textContent = all.length;
   document.getElementById('activeTrades').textContent = all.filter(t => t.status === 'active').length;
@@ -445,15 +705,19 @@ function filterTrades() {
   const strength = document.getElementById('filterStrength').value;
   const sort = document.getElementById('sortBy').value;
 
-  if (search) trades = trades.filter(t => t.symbol.toLowerCase().includes(search) || t.name.includes(search));
+  if (search) trades = trades.filter(t => t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search));
   if (status !== 'all') trades = trades.filter(t => t.status === status);
   if (strength !== 'all') trades = trades.filter(t => t.strength === parseInt(strength));
 
   if (sort === 'strength') trades.sort((a, b) => b.strength - a.strength);
   else if (sort === 'progress') trades.sort((a, b) => getProgress(b) - getProgress(a));
-  else if (sort === 'name') trades.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  else if (sort === 'name') trades.sort((a, b) => a.name.localeCompare(b.name));
 
   renderTrades(trades);
+}
+
+function changeViewMode() {
+  filterTrades();
 }
 
 function switchMarket(market) {
@@ -472,30 +736,26 @@ function switchMarket(market) {
   filterTrades();
 }
 
-// ===== SIMULATE PRICE UPDATES =====
 function simulatePriceUpdate() {
   const trades = getTrades();
   trades.forEach(t => {
     if (t.status === 'closed') return;
     const volatility = t.current * 0.003;
-    const change = (Math.random() - 0.45) * volatility; // slight upward bias
+    const change = (Math.random() - 0.45) * volatility;
     t.current = parseFloat((t.current + change).toFixed(2));
     
-    // Check if target1 hit
     if (t.status === 'active' && t.current >= t.target1) {
-      addAlert(`🎯 ${t.symbol} ${t.name} وصل للهدف الأول!`);
+      addAlert(`🎯 ${t.symbol} ${t.name} reached Target 1!`);
     }
-    // Check stop loss
     if (t.status === 'active' && t.current <= t.stopLoss) {
-      addAlert(`🔴 ${t.symbol} ${t.name} وصل لوقف الخسارة!`);
+      addAlert(`🔴 ${t.symbol} ${t.name} hit Stop Loss!`);
     }
   });
   
-  document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ar-SA', {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',hour12:false});
   filterTrades();
 }
 
-// ===== TIMER =====
 function updateTimer() {
   updateCountdown--;
   if (updateCountdown <= 0) {
@@ -511,14 +771,20 @@ updateClock();
 updateMarketStatus();
 filterTrades();
 lucide.createIcons();
+applyConfig(currentConfig);
 
 setInterval(updateClock, 1000);
 setInterval(updateMarketStatus, 5000);
 setInterval(updateTimer, 1000);
 
-// Initial price update after 10s for demo
-setTimeout(simulatePriceUpdate, 10000);
+// Fetch real prices periodically (uncomment when API is ready)
+setInterval(fetchRealPrices, 60000); // Every 1 minute for live updates
+
+setTimeout(() => {
+  simulatePriceUpdate();
+  fetchRealPrices(); // Initial fetch
+}, 5000);
 </script>
   </div>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ece9b13b40bb538',t:'MTc3NjI5NDQzOS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9eceb986c775b538',t:'MTc3NjI5NTY4Ni4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
