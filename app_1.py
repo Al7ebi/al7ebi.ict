@@ -1,116 +1,77 @@
-from flask import Flask, render_template, jsonify
+import streamlit as st
+import pandas as pd
 import datetime
 import random
 
-app = Flask(__name__)
+# --- 1. إعدادات الهوية والتصميم ---
+st.set_page_config(page_title="منصة الحبي للتداول", layout="wide")
 
-# المحرك التحليلي - طريقة الحبي
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Tajawal', sans-serif; text-align: right; }
+    .stMetric { background-color: #1e1e1e; padding: 15px; border-radius: 10px; border: 1px solid #333; }
+    </style>
+""", unsafe_allow_complete_html=True)
+
+# --- 2. المحرك التحليلي (منطق الحبي الذي كتبته أنت) ---
 class HabbiLogic:
     @staticmethod
-    def check_daily_sweep(price_data):
-        # محاكاة فحص سحب السيولة (ضرب قمة أو قاع اليوم السابق)
-        return random.choice([True, False])
-
-    @staticmethod
-    def confirm_mss_ifvg(price_data):
-        # محاكاة تأكيد كسر هيكل السوق وتكون الفجوة العكسية
-        return random.choice([True, False])
-
-    @staticmethod
-    def calculate_equilibrium(wave_high, wave_low):
-        # تحديد منطقة الخصم 50%
-        return (wave_high + wave_low) / 2
-
-    @staticmethod
-    def get_score(signal_data):
-        # نظام التقييم من 13
+    def get_score(s):
         score = 0
-        if signal_data['sweep']: score += 4
-        if signal_data['mss']: score += 3
-        if signal_data['ifvg']: score += 3
-        if signal_data['equilibrium']: score += 3
+        if s['sweep']: score += 4
+        if s['mss']: score += 3
+        if s['ifvg']: score += 3
+        if s['equilibrium']: score += 3
         return score
 
-# بيانات تجريبية
+# بيانات تجريبية (نفس التي وضعتها أنت)
 signals_db = [
     {
-        "symbol": "BTC/USD",
-        "sweep": True,
-        "mss": True,
-        "ifvg": True,
-        "equilibrium": True,
-        "price": 65000,
-        "high": 66000,
-        "low": 64000,
-        "timestamp": datetime.datetime.now() - datetime.timedelta(hours=2),
-        "type": "شراء (Long)"
+        "symbol": "BTC/USD", "sweep": True, "mss": True, "ifvg": True, "equilibrium": True,
+        "high": 66000, "low": 64000, "timestamp": datetime.datetime.now() - datetime.timedelta(hours=2), "type": "شراء (Long)"
     },
     {
-        "symbol": "GOLD",
-        "sweep": True,
-        "mss": False,
-        "ifvg": True,
-        "equilibrium": True,
-        "price": 2350,
-        "high": 2360,
-        "low": 2340,
-        "timestamp": datetime.datetime.now() - datetime.timedelta(hours=75), # منتهية الصلاحية
-        "type": "بيع (Short)"
+        "symbol": "GOLD", "sweep": True, "mss": False, "ifvg": True, "equilibrium": True,
+        "high": 2360, "low": 2340, "timestamp": datetime.datetime.now() - datetime.timedelta(hours=75), "type": "بيع (Short)"
     }
 ]
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# --- 3. الواجهة (التصميم العصري) ---
+st.title("📡 منصة الحبي للتداول")
 
-@app.route('/api/market_data')
-def market_data():
-    now = datetime.datetime.now()
-    # محاكاة حالة السوق (مفتوح من 9 ص إلى 5 م)
+# شريط عاجل
+st.info("🔥 تم رصد سحب سيولة يومي في البيتكوين .. نظام التقييم نشط الآن")
+
+# ساعة السوق
+now = datetime.datetime.now()
+col_time, col_status = st.columns(2)
+with col_time:
+    st.write(f"🕒 {now.strftime('%I:%M %p')} | {now.strftime('%A')}")
+with col_status:
     is_open = 9 <= now.hour < 17
-    
-    indicators = [
-        {"name": "مؤشر السيولة", "price": "1.2B", "change": 2.5},
-        {"name": "تاسي (TASI)", "price": "12,450", "change": -0.4},
-        {"name": "الذهب", "price": "2,385", "change": 1.2},
-        {"name": "النفط", "price": "85.4", "change": 0.8},
-        {"name": "البيتكوين", "price": "67,200", "change": 4.1},
-        {"name": "الدولار/ريال", "price": "3.75", "change": 0.0}
-    ]
-    
-    return jsonify({
-        "market_open": is_open,
-        "countdown": "يغلق بعد: 04:20:15" if is_open else "يفتح بعد: 08:00:00",
-        "indicators": indicators
-    })
+    st.success("السوق مفتوح 🟢") if is_open else st.error("السوق مغلق 🔴")
 
-@app.route('/api/signals')
-def get_signals():
-    fresh_signals = []
-    for s in signals_db:
-        age = (datetime.datetime.now() - s['timestamp']).total_seconds() / 3600
-        
-        # قانون الـ 3 أيام (72 ساعة)
-        if age > 72:
-            status = "منتهية"
-            continue # استبعاد التلقائي
-        else:
-            status = "طازجة"
-            
+st.write("---")
+
+# عرض المؤشرات (3x2 Grid)
+cols = st.columns(3)
+indicators = [("تاسي", "12,450", "-0.4%"), ("الذهب", "2,385", "+1.2%"), ("البيتكوين", "67,200", "+4.1%")]
+for i, col in enumerate(cols):
+    col.metric(indicators[i][0], indicators[i][1], indicators[i][2])
+
+st.write("### 💎 الفرص المكتشفة (قانون الـ 1 أيام)")
+
+# معالجة الصفقات وعرضها
+for s in signals_db:
+    age = (datetime.datetime.now() - s['timestamp']).total_seconds() / 3600
+    
+    if age <= 24: # قانون الـ 1 أيام
         score = HabbiLogic.get_score(s)
-        entry = HabbiLogic.calculate_equilibrium(s['high'], s['low'])
-        
-        fresh_signals.append({
-            "symbol": s['symbol'],
-            "score": score,
-            "type": s['type'],
-            "reason": "سحب سيولة + MSS + IFVG" if score > 10 else "تجميع وقود",
-            "entry": f"{entry:.2f}",
-            "tp": f"{s['high'] if s['type'] == 'شراء (Long)' else s['low']}",
-            "age": int(age)
-        })
-    
-    return jsonify(fresh_signals)
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+        with st.expander(f"📌 {s['symbol']} - تقييم القوة: {score}/13"):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"**النوع:** {s['type']}")
+            c2.write(f"**الهدف:** {s['high'] if s['type'] == 'شراء (Long)' else s['low']}")
+            c3.write(f"**العمر:** قبل {int(age)} ساعة")
+            if score >= 10:
+                st.success("🔥 هذه فرصة ذهبية مكتملة الشروط!")
