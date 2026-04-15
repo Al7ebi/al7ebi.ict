@@ -1,12 +1,12 @@
 import streamlit as st
 from datetime import datetime
-import engine as habbi_engine # استدعاء المحرك المحدث
+import engine as habbi_engine
 import time
 
-# 1. إعدادات الصفحة (يجب أن تكون أول سطر)
+# 1. إعدادات الصفحة
 st.set_page_config(page_title="منصة الحبي للتداول", page_icon="🦅", layout="wide")
 
-# 2. تصميم الـ CSS الفاخر (RTL + Tajawal Font + Promo Style)
+# 2. تصميم الـ CSS الفاخر 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
@@ -17,7 +17,6 @@ st.markdown("""
         text-align: right;
     }
 
-    /* قسم البرومو */
     .promo-header {
         background: linear-gradient(90deg, #020617 0%, #1e293b 100%);
         padding: 50px;
@@ -28,7 +27,6 @@ st.markdown("""
         margin-bottom: 25px;
     }
 
-    /* الكروت 3x2 */
     .metric-card {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(59, 130, 246, 0.3);
@@ -42,7 +40,6 @@ st.markdown("""
         transform: translateY(-5px);
     }
     
-    /* شريط الأخبار */
     .ticker {
         background: #3b82f6;
         color: white;
@@ -54,7 +51,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. قسم البرومو (الواجهة التعريفية)
+# 3. قسم البرومو
 st.markdown("""
     <div class="promo-header">
         <h1 style="font-size: 48px; margin-bottom: 10px;">🦅 منصة الحبي للتداول</h1>
@@ -66,10 +63,11 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# 4. شريط الأنباء العاجلة (News Bar)
-analysis = habbi_brain.analyze_habbi_golden()
+# 4. استدعاء البيانات من المحرك (هنا كان الخطأ وتم إصلاحه)
+analysis = habbi_engine.habbi_brain.analyze_habbi_golden()
 ticker_text = f"🚨 تم رصد إشارة {analysis['symbol']} - {analysis['sweep']} | الدخول من منطقة Equilibrium: {analysis['entry']} 🚨"
 
+# شريط الأنباء العاجلة
 st.markdown(f"""
     <div class="ticker">
         <marquee direction="right" scrollamount="6">{ticker_text}</marquee>
@@ -96,13 +94,11 @@ with col_m2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 6. شبكة الإحصائيات (3x2 Grid) مع تفعيل Freshness Rule
-if habbi_brain.is_fresh(analysis['time']):
+# 6. شبكة الإحصائيات مع الفلتر
+if habbi_engine.habbi_brain.is_fresh(analysis['time']):
     st.subheader("📊 لوحة بيانات التحليل اللحظي")
     
-    # الصف الأول
     c1, c2, c3 = st.columns(3)
-    # الصف الثاني
     c4, c5, c6 = st.columns(3)
 
     def draw_stat(col, title, val, sub):
@@ -124,7 +120,7 @@ if habbi_brain.is_fresh(analysis['time']):
 else:
     st.warning("⚠️ لا توجد إشارات حديثة متوافقة مع شروط الحبي خلال الـ 24 ساعة الماضية.")
 
-# 7. التذييل (Footer)
+# 7. التذييل
 st.markdown("""
     <div style="text-align: center; margin-top: 50px; padding: 20px; border-top: 1px solid #333; opacity: 0.7;">
         حقوق النشر محفوظة © منصة الحبي للتداول | برعاية <br>
