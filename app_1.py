@@ -1,119 +1,93 @@
 import streamlit as st
 import datetime
 import pandas as pd
-# استيراد المحرك الفعلي الخاص بك
-try:
-    import engine as E
-except:
-    st.error("خطأ: ملف engine.py غير موجود في نفس المجلد!")
 
-# 1. إعدادات الصفحة
-st.set_page_config(
-    page_title="منصة الحبي للتداول | Habbi Radar",
-    page_icon="🎯",
-    layout="wide"
-)
+# 1. نظام التبديل بين الأبيض والأسود (Theme Logic)
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'dark'
 
-# 2. التنسيق البصري (McKinsey Style - Compact Version)
-st.markdown("""
+def change_theme():
+    st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
+
+# إعدادات الألوان بناءً على اختيارك
+if st.session_state.theme == 'dark':
+    bg, txt, card_bg, border = "#0e1117", "#ffffff", "#1a1a1a", "#d4af37"
+else:
+    bg, txt, card_bg, border = "#ffffff", "#000000", "#f0f2f5", "#cccccc"
+
+st.set_page_config(page_title="منصة الحبي | Habbi Radar", layout="wide")
+
+# 2. التنسيق البصري (McKinsey Style)
+st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-    * { font-family: 'Tajawal', sans-serif !important; direction: rtl; }
-    .stApp { background-color: #0e1117; }
-    
-    /* تصغير البطاقات لتكون متراصة */
-    .metric-card {
-        background-color: #1a1a1a;
-        border: 1px solid #d4af37;
-        border-radius: 10px;
-        padding: 10px; /* تقليل المساحة */
-        text-align: center;
-        color: white;
-        margin-bottom: 10px;
-    }
-    .metric-value {
-        font-size: 20px; /* تصغير الخط */
-        font-weight: 700;
-        color: #ffcc00;
-    }
-    .gold-text { color: #d4af37 !important; text-align: center; }
-    
-    /* شريط الأخبار السفلي */
-    .marquee-container {
-        width: 100%; background: #d4af37; color: black;
-        position: fixed; bottom: 0; left: 0; padding: 5px;
-        font-weight: bold; font-size: 14px; z-index: 100;
-    }
+    * {{ font-family: 'Tajawal', sans-serif !important; direction: rtl; }}
+    .stApp {{ background-color: {bg}; color: {txt}; }}
+    .metric-card {{
+        background-color: {card_bg}; border: 1px solid {border};
+        border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
+    }}
+    .gold-text {{ color: #d4af37 !important; text-align: center; font-weight: bold; }}
     </style>
 """, unsafe_allow_html=True)
 
-# 3. الهيدر (Header)
-st.markdown('<h2 class="gold-text">📡 منصة الحبي للتداول الاحترافي</h2>', unsafe_allow_html=True)
+# 3. الشريط الجانبي (Sidebar) - واجهة التحكم
+with st.sidebar:
+    st.markdown("<h2 class='gold-text'>لوحة التحكم</h2>", unsafe_allow_html=True)
+    st.button("☀️/🌙 تبديل المظهر (أبيض/أسود)", on_click=change_theme)
+    st.write("---")
+    search_query = st.text_input("🔍 ابحث بالرمز أو الاسم (مثلاً: ORCL أو الذهب)", "").upper()
+    st.write("---")
+    st.write("⚙️ إعدادات الرادار:")
+    st.checkbox("تفعيل قانون الـ 3 أيام", value=True)
 
-col_time, col_status = st.columns(2)
-now = datetime.datetime.now()
+# 4. محاكاة بيانات المحرك (استبدلها بـ E.get_signals() لاحقاً)
+raw_data = [
+    {"Ticker": "ORCL", "Score": "13/13", "Grade": "A+", "Bias": "Long", "PD_Array": "FVG", "DOL": "207.07"},
+    {"Ticker": "XAUUSD", "Score": "9/13", "Grade": "B", "Bias": "Short", "PD_Array": "Breaker", "DOL": "2340.5"},
+    {"Ticker": "NVDA", "Score": "11/13", "Grade": "A", "Bias": "Long", "PD_Array": "Order Block", "DOL": "950.2"},
+    {"Ticker": "TASI", "Score": "7/13", "Grade": "C", "Bias": "Neutral", "PD_Array": "N/A", "DOL": "12500"}
+]
 
-with col_time:
-    st.markdown(f"<div style='text-align:right; color:white;'>{now.strftime('%I:%M %p')} | {now.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
+# منطق البحث (الفلترة)
+if search_query:
+    filtered_data = [s for s in raw_data if search_query in s['Ticker']]
+else:
+    filtered_data = raw_data
 
-with col_status:
-    is_open = 16 <= now.hour < 23 # توقيت السوق الأمريكي كمثال
-    status_msg = "السوق مفتوح 🟢" if is_open else "السوق مغلق 🔴"
-    st.markdown(f"<div style='text-align:left; color:white;'>{status_msg}</div>", unsafe_allow_html=True)
+# 5. عرض الهيدر وحالة السوق
+st.markdown('<h2 class="gold-text">📡 رادار الحبي للسيولة</h2>', unsafe_allow_html=True)
+
+col_t, col_s = st.columns(2)
+with col_t:
+    st.write(f"🕒 {datetime.datetime.now().strftime('%I:%M %p')} | {datetime.datetime.now().strftime('%Y-%m-%d')}")
+with col_s:
+    # يمكنك تعديل توقيت السوق هنا
+    is_open = 16 <= datetime.datetime.now().hour < 23
+    st.write(f"وضع السوق: {'مفتوح 🟢' if is_open else 'مغلق 🔴'}")
 
 st.write("---")
 
-# 4. محرك البحث والمسح الفعلي (Habbi Logic)
-# هنا نقوم باستدعاء الدالة الحقيقية من ملف engine الخاص بك
-@st.cache_data(ttl=60)
-def fetch_habbi_signals():
-    try:
-        # تأكد أن اسم الدالة في engine.py هو get_signals أو عدلها هنا
-        return E.get_signals() 
-    except:
-        # بيانات احتياطية في حال فشل المحرك
-        return [{"Ticker": "ORCL", "Score": "9/13", "Grade": "A", "Bias": "Long", "PD_Array": "Breaker", "DOL": "207.07"}]
-
-signals = fetch_habbi_signals()
-
-# 5. عرض شبكة البيانات (Compact Grid)
-st.markdown('<h4 class="gold-text">📊 رادار الصفقات النشطة</h4>', unsafe_allow_html=True)
-
-# عرض الصفقات في صفوف متراصة (كل صف يحتوي 4 بطاقات)
-for signal in signals:
-    with st.container():
+# 6. عرض النتائج بأسلوب الشبكة (Grid)
+if not filtered_data:
+    st.warning("⚠️ لا توجد نتائج مطابقة لبحثك.")
+else:
+    for signal in filtered_data:
+        st.markdown(f"### 🎯 تحليل: {signal['Ticker']}")
         cols = st.columns(6)
-        fields = [
-            ("Ticker", signal.get('Ticker', 'N/A')),
-            ("Score", signal.get('Score', '0/13')),
-            ("Grade", signal.get('Grade', 'C')),
-            ("Bias", signal.get('Bias', 'N/A')),
-            ("PD Array", signal.get('PD_Array', 'N/A')),
-            ("DOL", signal.get('DOL', 'N/A'))
+        metrics = [
+            ("الرمز", signal['Ticker']), ("التقييم", signal['Score']), ("الدرجة", signal['Grade']),
+            ("الاتجاه", signal['Bias']), ("المنطقة", signal['PD_Array']), ("الهدف", signal['DOL'])
         ]
-        
-        for i, (label, val) in enumerate(fields):
+        for i, (label, val) in enumerate(metrics):
             with cols[i]:
                 st.markdown(f"""
                     <div class="metric-card">
-                        <div style="font-size:12px; color:#aaa;">{label}</div>
-                        <div class="metric-value">{val}</div>
+                        <div style="font-size:12px; color:#888;">{label}</div>
+                        <div style="font-size:18px; font-weight:bold; color:#d4af37;">{val}</div>
                     </div>
                 """, unsafe_allow_html=True)
+        st.write("---")
 
-st.write("---")
-
-# 6. تفاصيل الاستراتيجية (التطابق مع نظامك)
-if signals:
-    st.info(f"✅ تم العثور على {len(signals)} فرصة تطابق استراتيجية الحبي (سحب سيولة + IFVG).")
-else:
-    st.warning("🔄 الرادار يبحث الآن عن سحب سيولة جديد... لم يتم العثور على فرص تطابق شروط 13/13 حالياً.")
-
-# شريط الأخبار
-st.markdown("""
-    <div class="marquee-container">
-        <marquee direction="right">
-            تم تطبيق قانون الـ 3 أيام بنجاح | نظام الحبي 13/13 نشط | جاري مسح PD Arrays | دقة التحليل هي هدفنا.
-        </marquee>
-    </div>
-""", unsafe_allow_html=True)
+# شريط الأخبار السفلي
+st.markdown('<marquee style="background:#d4af37; color:black; padding:5px;">جاري فحص السيولة... تم تفعيل رادار الحبي بنجاح | نظام البحث نشط الآن</marquee>', unsafe_allow_html=True)
