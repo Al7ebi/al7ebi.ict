@@ -1,110 +1,102 @@
 import streamlit as st
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
+import time
 
-# --- الإعدادات الفنية (McKinsey Dark UI) ---
-st.set_page_config(page_title="Habbi Pro Terminal", layout="wide")
+# 1. إعدادات المنصة الأساسية
+st.set_page_config(page_title="Habbi Pro Terminal", layout="wide", initial_sidebar_state="expanded")
+
+# 2. هندسة التصميم (McKinsey & Gold Edition CSS)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
+    
+    /* التنسيق العام */
     * { font-family: 'Tajawal', sans-serif !important; direction: rtl; }
     .stApp { background-color: #0b0d11; color: #e0e0e0; }
-    .status-active { color: #2ecc71; font-weight: bold; border: 1px solid #2ecc71; padding: 2px 10px; border-radius: 5px; }
-    .status-wait { color: #f1c40f; font-weight: bold; border: 1px solid #f1c40f; padding: 2px 10px; border-radius: 5px; }
-    .trade-box { background: #161a21; border-right: 5px solid #d4af37; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-    .price-label { font-size: 14px; color: #888; }
-    .price-val { font-size: 22px; font-weight: 900; color: #d4af37; }
+    
+    /* بطاقة التداول الاحترافية */
+    .trade-card {
+        background: linear-gradient(145deg, #161a21, #1c2229);
+        border: 1px solid #333;
+        border-right: 5px solid #d4af37;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+    }
+    
+    /* مؤشرات الحالة */
+    .status-ready { color: #2ecc71; background: rgba(46, 204, 113, 0.1); padding: 5px 15px; border-radius: 50px; font-weight: bold; border: 1px solid #2ecc71; }
+    .status-hold { color: #f1c40f; background: rgba(241, 196, 15, 0.1); padding: 5px 15px; border-radius: 50px; font-weight: bold; border: 1px solid #f1c40f; }
+    
+    /* أرقام الأسعار */
+    .price-label { font-size: 13px; color: #888; margin-bottom: 5px; }
+    .price-value { font-size: 24px; font-weight: 900; color: #d4af37; }
+    
+    /* شريط التقدم للهدف */
+    .progress-container { background-color: #333; border-radius: 10px; margin: 10px 0; height: 10px; width: 100%; }
+    .progress-bar { background: #d4af37; height: 10px; border-radius: 10px; width: 65%; } /* مثال 65% للهدف */
     </style>
 """, unsafe_allow_html=True)
 
-# --- محرك استراتيجية الحبي (The Brain) ---
-def get_habbi_signal(symbol):
-    try:
-        # جلب بيانات 5 دقائق لآخر يومين
-        df = yf.download(symbol, period='2d', interval='5m')
-        if df.empty: return None
-        
-        curr = df.iloc[-1]
-        prev_high = df['High'].iloc[-20:].max() # أعلى قمة في الـ 20 شمعة الماضية
-        prev_low = df['Low'].iloc[-20:].min()
-        
-        # 1. تحليل سحب السيولة (Liquidity Sweep)
-        sweep_buy = curr['Low'] < prev_low and curr['Close'] > prev_low
-        sweep_sell = curr['High'] > prev_high and curr['Close'] < prev_high
-        
-        # 2. مستويات التنفيذ (ICT Equilibrium)
-        range_max, range_min = df['High'].max(), df['Low'].min()
-        equilibrium = (range_max + range_min) / 2
-        
-        # 3. منطق الجاهزية (Readiness Logic)
-        status = "انتظار سحب سيولة"
-        color = "wait"
-        if sweep_buy:
-            status = "جاهز للشراء (Long Zone)"
-            color = "active"
-        elif sweep_sell:
-            status = "جاهز للبيع (Short Zone)"
-            color = "active"
-        
-        return {
-            "Symbol": symbol,
-            "Price": round(curr['Close'], 2),
-            "Entry": round(equilibrium, 2),
-            "Target": round(range_max if sweep_buy else range_min, 2),
-            "Stop": round(prev_low * 0.998 if sweep_buy else prev_high * 1.002, 2),
-            "Score": "13/13" if (sweep_buy or sweep_sell) else "9/13",
-            "Status": status,
-            "Class": color,
-            "Time": datetime.now(pytz.timezone('Asia/Riyadh')).strftime('%H:%M:%S')
-        }
-    except: return None
-
-# --- واجهة العرض التنفيذية ---
-st.markdown("<h1 style='color:#d4af37; text-align:center;'>🎯 منصة الحبي: رادار التنفيذ اللحظي</h1>", unsafe_allow_html=True)
-st.write(f"<p style='text-align:center;'>تحديث تلقائي كل 5 دقائق | توقيت مكة: {datetime.now(pytz.timezone('Asia/Riyadh')).strftime('%H:%M:%S')}</p>", unsafe_allow_html=True)
-
-# شريط البحث
+# 3. الشريط الجانبي (لوحة التحكم)
 with st.sidebar:
-    st.markdown("<h3 style='color:#d4af37;'>لوحة التحكم</h3>", unsafe_allow_html=True)
-    user_symbol = st.text_input("ابحث عن رمز (مثال: GC=F, NQ=F):", "").upper()
+    st.markdown("<h2 style='color:#d4af37; text-align:center;'>⚙️ الإعدادات</h2>", unsafe_allow_html=True)
+    st.text_input("🔍 ابحث عن رمز أو سوق:", placeholder="مثلاً: GOLD, NASDAQ...")
     st.divider()
-    st.write("⚙️ الرادار يفحص الآن: Liquidity Sweeps, MSS, IFVG")
+    st.selectbox("الفريم الزمني:", ["5 دقائق", "15 دقيقة", "ساعة", "يومي"])
+    st.checkbox("تفعيل التنبيهات الصوتية", value=True)
+    st.write("---")
+    st.caption("نظام التحديث التلقائي نشط (كل 5 دقائق)")
 
-tickers = [user_symbol] if user_symbol else ["GC=F", "NQ=F", "BTC-USD", "NVDA"]
+# 4. هيدر المنصة
+col_logo, col_time = st.columns([3, 1])
+with col_logo:
+    st.markdown("<h1 style='color:#d4af37; margin:0;'>📡 رادار الحبي | <span style='font-size:20px; color:#888;'>Habbi Execution Pro</span></h1>", unsafe_allow_html=True)
+with col_time:
+    makkah_time = datetime.now(pytz.timezone('Asia/Riyadh')).strftime('%H:%M:%S')
+    st.markdown(f"<div style='text-align:left; color:#888;'>توقيت مكة المكرمة<br><b style='color:#fff; font-size:20px;'>{makkah_time}</b></div>", unsafe_allow_html=True)
 
-for t in tickers:
-    res = get_habbi_signal(t)
-    if res:
-        st.markdown(f"""
-            <div class="trade-box">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-size:24px; font-weight:bold;">{res['Symbol']}</span>
-                    <span class="status-{res['Class']}">{res['Status']}</span>
-                    <span style="color:#888;">تقييم: {res['Score']} | ⌚ {res['Time']}</span>
+st.divider()
+
+# 5. عرض الصفقات (نموذج محاكاة للواجهة فقط)
+# هنا ستقوم لاحقاً بربط بيانات استراتيجيتك في هذه المربعات
+mock_data = [
+    {"symbol": "XAUUSD (الذهب)", "status": "جاهز للتنفيذ", "class": "ready", "price": "2,385.40", "entry": "2,382.00", "target": "2,405.00", "stop": "2,375.00", "progress": "75%"},
+    {"symbol": "NAS100 (ناسداك)", "status": "قيد المراقبة", "class": "hold", "price": "18,250.10", "entry": "18,180.00", "target": "18,400.00", "stop": "18,100.00", "progress": "30%"}
+]
+
+for item in mock_data:
+    st.markdown(f"""
+        <div class="trade-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <div>
+                    <span style="font-size:26px; font-weight:900;">{item['symbol']}</span>
+                    <span style="margin-right:15px;" class="status-{item['class']}">{item['status']}</span>
                 </div>
-                <hr style="border:0.5px solid #333;">
-                <div style="display:flex; justify-content:space-around; text-align:center;">
-                    <div><p class="price-label">السعر اللحظي</p><p class="price-val">{res['Price']}</p></div>
-                    <div><p class="price-label">نقطة الدخول (50%)</p><p class="price-val" style="color:#3498db;">{res['Entry']}</p></div>
-                    <div><p class="price-label">الهدف (DOL)</p><p class="price-val" style="color:#2ecc71;">{res['Target']}</p></div>
-                    <div><p class="price-label">وقف الخسارة</p><p class="price-val" style="color:#e74c3c;">{res['Stop']}</p></div>
+                <div style="text-align:left;">
+                    <span style="color:#888;">المسافة للهدف:</span> <span style="color:#d4af37; font-weight:bold;">{item['progress']}</span>
+                    <div class="progress-container"><div class="progress-bar" style="width:{item['progress']};"></div></div>
                 </div>
             </div>
-        """, unsafe_allow_html=True)
+            <div style="display:flex; justify-content:space-around;">
+                <div style="text-align:center;"><div class="price-label">السعر اللحظي</div><div class="price-value">{item['price']}</div></div>
+                <div style="text-align:center;"><div class="price-label">نقطة الدخول (50%)</div><div class="price-value" style="color:#3498db;">{item['entry']}</div></div>
+                <div style="text-align:center;"><div class="price-label">الهدف النهائي (DOL)</div><div class="price-value" style="color:#2ecc71;">{item['target']}</div></div>
+                <div style="text-align:center;"><div class="price-label">وقف الخسارة</div><div class="price-value" style="color:#e74c3c;">{item['stop']}</div></div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# ميزة إدارة الصفقة (متى تغلق أو ترفع الوقف)
-st.write("---")
-st.markdown("### 🛡️ دليل إدارة الصفقة (Execution Guide)")
-col1, col2 = st.columns(2)
-with col1:
-    st.success("**متى ترفع الوقف؟** إذا حقق السعر 50% من المسافة نحو الهدف، انقل الوقف لنقطة الدخول (Breakeven).")
-with col2:
-    st.warning("**متى تغلق يدوياً؟** إذا ظهر سحب سيولة عكسي (Opposite Sweep) قبل الوصول للهدف النهائي.")
+# 6. قسم إدارة الصفقة ورفع الوقف
+st.write("##")
+with st.expander("🛠️ أدوات إدارة الصفقة النشطة"):
+    c1, c2, c3 = st.columns(3)
+    c1.button("🚨 إغلاق فوري لجميع المراكز")
+    c2.button("🛡️ تأمين (نقل الوقف للدخول)")
+    c3.button("📈 جني أرباح جزئي (50%)")
 
-# التحديث الآلي
-st.empty()
-import time
+# 7. التحديث الآلي (كل 5 دقائق)
 time.sleep(300)
 st.rerun()
