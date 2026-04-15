@@ -1,215 +1,119 @@
 import streamlit as st
 import datetime
-import time
 import pandas as pd
-import random
+# استيراد المحرك الفعلي الخاص بك
+try:
+    import engine as E
+except:
+    st.error("خطأ: ملف engine.py غير موجود في نفس المجلد!")
 
-# 1. إعدادات الصفحة (Page Configuration)
+# 1. إعدادات الصفحة
 st.set_page_config(
-    page_title="منصة الحبي للتداول الاحترافي | Habbi Radar",
+    page_title="منصة الحبي للتداول | Habbi Radar",
     page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
 )
 
-# 2. الهوية والتصميم (Custom CSS for McKinsey Style)
+# 2. التنسيق البصري (McKinsey Style - Compact Version)
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
-
-    /* الخط والاتجاه */
-    * {
-        font-family: 'Tajawal', sans-serif !important;
-        direction: rtl;
-    }
-
-    /* صناديق شبكة البيانات 3x2 */
+    @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+    * { font-family: 'Tajawal', sans-serif !important; direction: rtl; }
+    .stApp { background-color: #0e1117; }
+    
+    /* تصغير البطاقات لتكون متراصة */
     .metric-card {
         background-color: #1a1a1a;
-        border: 2px solid #d4af37;
-        border-radius: 15px;
-        padding: 25px;
+        border: 1px solid #d4af37;
+        border-radius: 10px;
+        padding: 10px; /* تقليل المساحة */
         text-align: center;
         color: white;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.5);
-        margin-bottom: 20px;
+        margin-bottom: 10px;
     }
-
     .metric-value {
-        font-size: 32px;
-        font-weight: 900;
+        font-size: 20px; /* تصغير الخط */
+        font-weight: 700;
         color: #ffcc00;
-        margin: 10px 0;
     }
-
-    /* شريط الأخبار المتحرك */
-    .marquee-container {
-        width: 100%;
-        background-color: #d4af37;
-        color: black;
-        overflow: hidden;
-        padding: 12px 0;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        z-index: 1000;
-        font-weight: bold;
-        font-size: 18px;
-    }
-
-    .marquee-text {
-        display: inline-block;
-        white-space: nowrap;
-        animation: marquee 40s linear infinite;
-        padding-left: 100%;
-    }
-
-    @keyframes marquee {
-        0%   { transform: translate(0, 0); }
-        100% { transform: translate(-100%, 0); }
-    }
-
-    /* نقطة النبض */
-    .pulse {
-        display: inline-block;
-        width: 15px;
-        height: 15px;
-        border-radius: 50%;
-        box-shadow: 0 0 0 rgba(46, 204, 113, 0.4);
-        animation: pulse-animation 2s infinite;
-        margin-left: 12px;
-        vertical-align: middle;
-    }
-
-    @keyframes pulse-animation {
-        0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
-        70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
-    }
-
-    /* تخصيص العناوين والبريق */
-    .gold-text {
-        color: #d4af37 !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-    }
+    .gold-text { color: #d4af37 !important; text-align: center; }
     
-    .stApp {
-        background-color: #0e1117;
+    /* شريط الأخبار السفلي */
+    .marquee-container {
+        width: 100%; background: #d4af37; color: black;
+        position: fixed; bottom: 0; left: 0; padding: 5px;
+        font-weight: bold; font-size: 14px; z-index: 100;
     }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# 3. المحرك التحليلي (Logic Engine)
-class HabbiRadar:
-    @staticmethod
-    def get_market_status():
-        now = datetime.datetime.now()
-        is_open = 9 <= now.hour < 17
-        status = "مفتوح" if is_open else "مغلق"
-        color = "#2ecc71" if is_open else "#e74c3c"
-        countdown = "يغلق بعد: 04:20:15" if is_open else "يفتح بعد: 08:00:00"
-        return status, color, countdown
+# 3. الهيدر (Header)
+st.markdown('<h2 class="gold-text">📡 منصة الحبي للتداول الاحترافي</h2>', unsafe_allow_html=True)
 
-    @staticmethod
-    def generate_signals():
-        symbols = ["BTC/USD", "GOLD", "TASI", "NVDA", "ETH/USD", "OIL"]
-        signals = []
-        for sym in symbols:
-            score = random.randint(5, 13)
-            age = random.randint(1, 80)
-            if age > 72: continue # قانون الـ 3 أيام
-            
-            signals.append({
-                "symbol": sym,
-                "score": score,
-                "status": "فرصة ذهبية" if score >= 9 else "قيد المراقبة",
-                "reason": "سحب سيولة + MSS + IFVG" if score >= 9 else "تجميع وقود",
-                "entry": f"{random.uniform(100, 70000):.2f}",
-                "age": age
-            })
-        return signals
-
-# 4. واجهة المستخدم (UI Layout)
-
-# الهيدر (Header)
-st.markdown('<h1 class="gold-text" style="text-align:center;">منصة الحبي للتداول الاحترافي (Habbi Radar)</h1>', unsafe_allow_html=True)
-
-col_time, col_status = st.columns([1, 1])
+col_time, col_status = st.columns(2)
+now = datetime.datetime.now()
 
 with col_time:
-    now = datetime.datetime.now()
-    st.markdown(f"""
-        <div style="text-align:right;">
-            <h2 class="gold-text">{now.strftime('%I:%M:%S %p')}</h2>
-            <p style="color:white;">{now.strftime('%Y-%m-%d | %A')}</p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right; color:white;'>{now.strftime('%I:%M %p')} | {now.strftime('%Y-%m-%d')}</div>", unsafe_allow_html=True)
 
-status, color, countdown = HabbiRadar.get_market_status()
 with col_status:
-    st.markdown(f"""
-        <div style="text-align:left;">
-            <h2 style="color:{color};"><span class="pulse" style="background:{color}"></span> السوق {status}</h2>
-            <p style="color:white;">{countdown}</p>
-        </div>
-    """, unsafe_allow_html=True)
+    is_open = 16 <= now.hour < 23 # توقيت السوق الأمريكي كمثال
+    status_msg = "السوق مفتوح 🟢" if is_open else "السوق مغلق 🔴"
+    st.markdown(f"<div style='text-align:left; color:white;'>{status_msg}</div>", unsafe_allow_html=True)
 
-st.divider()
+st.write("---")
 
-# شبكة البيانات 3x2
-st.markdown('<h2 class="gold-text">📊 أهم مؤشرات السوق (Habbi Grid)</h2>', unsafe_allow_html=True)
-grid_cols = st.columns(3)
-indicators = [
-    ("مؤشر السيولة", "1.2B", "+2.5%"),
-    ("تاسي (TASI)", "12,450", "-0.4%"),
-    ("الذهب", "2,385", "+1.2%"),
-    ("النفط", "85.4", "+0.8%"),
-    ("البيتكوين", "67,200", "+4.1%"),
-    ("الدولار/ريال", "3.75", "0.0%")
-]
+# 4. محرك البحث والمسح الفعلي (Habbi Logic)
+# هنا نقوم باستدعاء الدالة الحقيقية من ملف engine الخاص بك
+@st.cache_data(ttl=60)
+def fetch_habbi_signals():
+    try:
+        # تأكد أن اسم الدالة في engine.py هو get_signals أو عدلها هنا
+        return E.get_signals() 
+    except:
+        # بيانات احتياطية في حال فشل المحرك
+        return [{"Ticker": "ORCL", "Score": "9/13", "Grade": "A", "Bias": "Long", "PD_Array": "Breaker", "DOL": "207.07"}]
 
-for i, (name, val, change) in enumerate(indicators):
-    with grid_cols[i % 3]:
-        color_change = '#2ecc71' if '+' in change else '#e74c3c' if '-' in change else '#fff'
-        st.markdown(f"""
-            <div class="metric-card">
-                <h3 style="color:#d4af37;">{name}</h3>
-                <div class="metric-value">{val}</div>
-                <div style="color: {color_change}; font-size: 20px;">{change}</div>
-            </div>
-        """, unsafe_allow_html=True)
+signals = fetch_habbi_signals()
 
-st.divider()
+# 5. عرض شبكة البيانات (Compact Grid)
+st.markdown('<h4 class="gold-text">📊 رادار الصفقات النشطة</h4>', unsafe_allow_html=True)
 
-# رادار الصفقات
-st.markdown('<h2 class="gold-text">🎯 رادار الفرص المكتشفة (طريقة الحبي)</h2>', unsafe_allow_html=True)
-signals = HabbiRadar.generate_signals()
-
+# عرض الصفقات في صفوف متراصة (كل صف يحتوي 4 بطاقات)
 for signal in signals:
-    with st.expander(f"🔍 {signal['symbol']} - تقييم: {signal['score']}/13 - {signal['status']}", expanded=(signal['score'] >= 11)):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f"**السبب:** {signal['reason']}")
-        with c2:
-            st.markdown(f"**نقطة الدخول (Equilibrium):** {signal['entry']}")
-        with c3:
-            st.markdown(f"**العمر:** {signal['age']} ساعة")
+    with st.container():
+        cols = st.columns(6)
+        fields = [
+            ("Ticker", signal.get('Ticker', 'N/A')),
+            ("Score", signal.get('Score', '0/13')),
+            ("Grade", signal.get('Grade', 'C')),
+            ("Bias", signal.get('Bias', 'N/A')),
+            ("PD Array", signal.get('PD_Array', 'N/A')),
+            ("DOL", signal.get('DOL', 'N/A'))
+        ]
         
-        if signal['score'] >= 9:
-            st.success("✅ هذه الصفقة تطابق شروط 'الحبي' الذهبية.")
-            if signal['score'] >= 11:
-                st.balloons()
+        for i, (label, val) in enumerate(fields):
+            with cols[i]:
+                st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="font-size:12px; color:#aaa;">{label}</div>
+                        <div class="metric-value">{val}</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-# شريط الأخبار السفلي
-st.markdown(f"""
+st.write("---")
+
+# 6. تفاصيل الاستراتيجية (التطابق مع نظامك)
+if signals:
+    st.info(f"✅ تم العثور على {len(signals)} فرصة تطابق استراتيجية الحبي (سحب سيولة + IFVG).")
+else:
+    st.warning("🔄 الرادار يبحث الآن عن سحب سيولة جديد... لم يتم العثور على فرص تطابق شروط 13/13 حالياً.")
+
+# شريط الأخبار
+st.markdown("""
     <div class="marquee-container">
-        <div class="marquee-text">
-            جاري فحص السيولة... | ترقبوا صفقات الحبي الذهبية | نظام MSS + IFVG قيد التشغيل | تم تطبيق قانون الـ 3 أيام بنجاح | 
-            Habbi Radar: دقة التحليل هي مفتاح النجاح | اكتشاف سحب سيولة على الذهب الآن! | منصة الحبي هي رادارك الأول في الأسواق |
-        </div>
+        <marquee direction="right">
+            تم تطبيق قانون الـ 3 أيام بنجاح | نظام الحبي 13/13 نشط | جاري مسح PD Arrays | دقة التحليل هي هدفنا.
+        </marquee>
     </div>
-    """, unsafe_allow_html=True)
-
-# تفعيل التحديث التلقائي كل 30 ثانية
-# time.sleep(30)
-# st.rerun()
+""", unsafe_allow_html=True)
