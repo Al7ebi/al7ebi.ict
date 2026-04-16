@@ -1,7 +1,6 @@
 """
-app_1.py — منصة الحبي للتداول
-واجهة احترافية مرتبطة بـ engine.py
-السوق السعودي + الأمريكي | 24 ساعة freshness | Habbi Golden Setup
+app_1.py — منصة الحبي للتداول  v5
+جميع الملاحظات مطبّقة
 """
 import streamlit as st
 import pandas as pd
@@ -9,9 +8,6 @@ from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 import engine as E
 
-# ══════════════════════════════════════════════════════════════
-#  PAGE CONFIG
-# ══════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="منصة الحبي للتداول",
     page_icon="ح",
@@ -19,64 +15,64 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  SESSION STATE
-# ══════════════════════════════════════════════════════════════
-_DEFAULTS = {
-    "theme":        "dark",
-    "market_tab":   "US",       # "SA" | "US"
-    "radar_df":     None,
-    "radar_ts":     None,
-    "drill":        None,
-    "search_q":     "",
-    "sort_by":      "القوة",
-    "filter_grade": "جميع القوة",
-    "view_mode":    "بطاقات",
-}
-for k, v in _DEFAULTS.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+# ══════════════════════════════════════════════════════
+for k,v in {
+    "theme":"dark","market_tab":"US","radar_df":None,
+    "radar_ts":None,"drill":None,"search_q":"",
+    "sort_by":"القوة","filter_grade":"جميع القوة","view_mode":"جدول",
+    "us_wl":"تقنية كبرى (30)",
+}.items():
+    if k not in st.session_state: st.session_state[k]=v
 
 DARK = st.session_state.theme == "dark"
 
-# ══════════════════════════════════════════════════════════════
-#  WATCHLISTS — السوق السعودي + الأمريكي
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  WATCHLISTS
+# ══════════════════════════════════════════════════════
 SA_STOCKS = [
-    ("2222","أرامكو","ARAMCO"),("1120","الراجحي","RAJHI"),
-    ("2010","سابك","SABIC"),("7010","STC","STC"),
-    ("1180","الأهلي","ANB"),("2330","بابكو","BAPCO"),
-    ("4001","وفا للتأمين","WAFA"),("1211","معادن","MAADEN"),
-    ("2350","سافكو","SAFCO"),("4190","جرير","JARIR"),
-    ("4161","تمكين","TAMKEEN"),("8010","سلامة","SALAM"),
-    ("3040","نماء","NAMMA"),("2380","بترو رابغ","PETROR"),
-    ("4003","التعاونية","COOP"),
+    ("2222","أرامكو"),("1120","الراجحي"),("2010","سابك"),("7010","STC"),
+    ("1180","الأهلي"),("1211","معادن"),("2350","سافكو"),("4190","جرير"),
+    ("2380","بترو رابغ"),("4003","التعاونية"),("2030","بنك الجزيرة"),
+    ("1150","الأول"),("1060","بنك الرياض"),("2280","شركة المراعي"),
+    ("4321","بوان"),
 ]
-SA_WATCHLIST = [(t,"2222") for t,_,_ in SA_STOCKS]
+SA_WATCHLIST = [(t,"2222.SR") for t,_ in SA_STOCKS]
+
+TECH_30  = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","AMD","QCOM",
+            "ORCL","CRM","ADBE","INTC","TXN","MU","AMAT","LRCX","KLAC","MRVL",
+            "NFLX","PYPL","SHOP","SNOW","PANW","CRWD","ZS","DDOG","MSTR","PLTR"]
+BLUE_40  = ["JPM","BAC","GS","MS","BRK-B","V","MA","AXP","WFC","C",
+            "JNJ","UNH","LLY","ABBV","PFE","MRK","TMO","ABT","DHR","BMY",
+            "WMT","HD","COST","TGT","MCD","SBUX","NKE","LOW","TJX","AMGN",
+            "XOM","CVX","COP","SLB","CAT","RTX","HON","UPS","BA","GE"]
+# الأسهم الرخيصة: فقط الاتجاه الصاعد (Long only)
+CHEAP_20 = ["F","AAL","SOFI","RIVN","SNAP","UBER","LYFT","PLUG","NIO",
+            "XPEV","CLNE","NOK","BB","SIRI","VALE","ITUB","PBR","KGC","BTG","LCID"]
 
 US_WATCHLIST_MAP = {
-    "تقنية كبرى (30)":  [(t,"QQQ") for t in ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","AMD","QCOM","ORCL","CRM","ADBE","INTC","TXN","MU","AMAT","LRCX","KLAC","MRVL","NFLX","PYPL","SHOP","SNOW","PANW","CRWD","ZS","DDOG","MSTR","PLTR"]],
-    "قيادية S&P (40)":  [(t,"SPY") for t in ["JPM","BAC","GS","MS","BRK-B","V","MA","AXP","WFC","C","JNJ","UNH","LLY","ABBV","PFE","MRK","TMO","ABT","DHR","BMY","WMT","HD","COST","TGT","MCD","SBUX","NKE","LOW","TJX","AMGN","XOM","CVX","COP","SLB","CAT","RTX","HON","UPS","BA","GE"]],
-    "الكل (70 سهم)":   E.WATCHLIST_PRESETS.get("Options (70 Stocks)",[]),
-    "رخيصة (<$20)":     E.WATCHLIST_PRESETS.get("Cheap Stocks (<$20)",[]),
-    "كريبتو ETF":        E.WATCHLIST_PRESETS.get("Crypto ETFs",[]),
+    "تقنية كبرى (30)":  [(t,"QQQ") for t in TECH_30],
+    "قيادية S&P (40)":  [(t,"SPY") for t in BLUE_40],
+    "الكل (70 سهم)":    [(t,"QQQ") for t in TECH_30]+[(t,"SPY") for t in BLUE_40],
+    "رخيصة (<$20) — صاعد فقط": [(t,"SPY") for t in CHEAP_20],
+    "كريبتو ETF":        [(t,"QQQ") for t in ["MSTR","COIN","BITO","GBTC","ETHE","ARKK","BLOK","BTCW"]],
 }
+CHEAP_KEY = "رخيصة (<$20) — صاعد فقط"
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  TOKENS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 if DARK:
-    BG="#0C0E16"; CARD="#12151F"; CARD2="#181C2A"; BRD="#1C2136"
+    BG="#0B0D16"; CARD="#11141F"; CARD2="#171B2A"; BRD="#1C2136"
     TXT="#E2E8F5"; TXT2="#8896B2"; TXT3="#3A4560"
-    TBLH="#0C0E16"; TBLHV="#181C2A"
-    HDR_BG="#10131E"; NAV_BG="#10131E"; NAV_BRD="#1C2136"
-    STS_BG="#141824"
+    TBLH="#0B0D16"; TBLHV="#171B2A"
+    HDR_BG="#0E1120"; STS_BG="#0E1120"
 else:
     BG="#F1F4FA"; CARD="#FFFFFF"; CARD2="#F7F9FF"; BRD="#E2E8F0"
     TXT="#0F1629"; TXT2="#4A5680"; TXT3="#9AA3BA"
     TBLH="#F7F9FF"; TBLHV="#EEF2FA"
-    HDR_BG="#FFFFFF"; NAV_BG="#FFFFFF"; NAV_BRD="#E2E8F0"
-    STS_BG="#F7F9FF"
+    HDR_BG="#FFFFFF"; STS_BG="#F7F9FF"
 
 BL="#3B82F6"; GR="#10B981"; RD="#EF4444"; AM="#F59E0B"
 GR2="#22C55E"; RD2="#F87171"; AM2="#FCD34D"
@@ -85,24 +81,26 @@ RL  = "#2D0A0A" if DARK else "#FEE2E2"
 BLL = "#0F1E4A" if DARK else "#DBEAFE"
 AL  = "#2D1A00" if DARK else "#FEF9C3"
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  CSS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap');
 :root{{
-  --bg:{BG}; --card:{CARD}; --card2:{CARD2}; --brd:{BRD};
-  --txt:{TXT}; --txt2:{TXT2}; --txt3:{TXT3};
-  --tblh:{TBLH}; --tblhv:{TBLHV};
-  --bl:{BL}; --gr:{GR}; --rd:{RD}; --am:{AM};
+  --bg:{BG};--card:{CARD};--card2:{CARD2};--brd:{BRD};
+  --txt:{TXT};--txt2:{TXT2};--txt3:{TXT3};
+  --tblh:{TBLH};--tblhv:{TBLHV};
+  --bl:{BL};--gr:{GR};--rd:{RD};--am:{AM};
   --font:'Tajawal',sans-serif;
   --sh:0 1px 3px rgba(0,0,0,{"0.45" if DARK else "0.07"});
   --sh2:0 4px 16px rgba(0,0,0,{"0.55" if DARK else "0.09"});
 }}
 html,body,[class*="css"]{{
-  background:var(--bg)!important; font-family:var(--font)!important;
-  color:var(--txt)!important; direction:rtl!important;
+  background:var(--bg)!important;
+  font-family:var(--font)!important;
+  color:var(--txt)!important;
+  direction:rtl!important;
 }}
 *{{box-sizing:border-box;}}
 [data-testid="collapsedControl"],[data-testid="stSidebar"],
@@ -111,150 +109,101 @@ section[data-testid="stSidebar"]{{display:none!important;}}
 ::-webkit-scrollbar{{width:4px;height:4px;}}
 ::-webkit-scrollbar-thumb{{background:var(--brd);border-radius:4px;}}
 
-/* ── TOP HEADER ── */
+/* ── HEADER ── */
 .top-hdr{{
   background:{HDR_BG};
-  padding:0 clamp(14px,3vw,32px);
-  height:56px;
+  padding:0 clamp(14px,3vw,36px);
+  height:62px;
   display:flex;align-items:center;justify-content:space-between;
   border-bottom:1px solid var(--brd);
   position:sticky;top:0;z-index:100;
 }}
-.hdr-left{{display:flex;align-items:center;gap:10px;}}
-.hdr-right{{display:flex;align-items:center;gap:12px;}}
+.hdr-brand{{display:flex;align-items:center;gap:12px;}}
 .brand-logo{{
-  width:38px;height:38px;
-  background:var(--bl);border-radius:10px;
+  width:42px;height:42px;background:var(--bl);border-radius:12px;
   display:flex;align-items:center;justify-content:center;
-  font-size:1.1rem;font-weight:900;color:#fff;
-  flex-shrink:0;
+  font-size:1.2rem;font-weight:900;color:#fff;flex-shrink:0;
+  box-shadow:0 4px 12px rgba(59,130,246,0.4);
 }}
-.brand-name{{font-size:1.05rem;font-weight:800;color:var(--txt);line-height:1.1;}}
-.brand-sub{{font-size:0.62rem;color:var(--txt3);letter-spacing:0.5px;}}
-.hdr-time{{
-  font-size:0.88rem;font-weight:700;
-  color:var(--bl);letter-spacing:1px;
+.brand-name{{
+  font-size:clamp(1.1rem,2.5vw,1.5rem);
+  font-weight:900;color:var(--txt);line-height:1.1;
+}}
+.brand-sub{{font-size:0.7rem;color:var(--txt3);letter-spacing:0.3px;margin-top:1px;}}
+.hdr-controls{{
+  display:flex;align-items:center;gap:8px;
+}}
+.hdr-clock{{
+  font-size:1.05rem;font-weight:800;
+  color:var(--bl);letter-spacing:2px;
   font-variant-numeric:tabular-nums;
+  padding:0 6px;
 }}
-.hdr-btn{{
-  width:34px;height:34px;border-radius:9px;
+.hdr-icon-btn{{
+  width:36px;height:36px;border-radius:10px;
   background:var(--card2);border:1px solid var(--brd);
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;font-size:1rem;transition:background .15s;
-  text-decoration:none;color:var(--txt);
+  cursor:pointer;font-size:1.05rem;transition:all .15s;
+  flex-shrink:0;
 }}
-.hdr-btn:hover{{background:var(--brd);}}
+.hdr-icon-btn:hover{{background:var(--brd);border-color:var(--bl);}}
+.hdr-icon-btn.active{{background:rgba(59,130,246,.15);border-color:var(--bl);}}
 
-/* ── MARKET TABS ── */
-.mkt-tabs-bar{{
-  background:{NAV_BG};
-  padding:0 clamp(14px,3vw,32px);
-  border-bottom:1px solid var(--brd);
-  display:flex;align-items:center;gap:0;
+/* ── MARKET TABS — خط فقط ── */
+.mkt-tabs{{
+  background:{HDR_BG};
+  padding:0 clamp(14px,3vw,36px);
+  border-bottom:2px solid var(--brd);
+  display:flex;align-items:flex-end;gap:4px;
 }}
 .mkt-tab{{
-  padding:12px 22px;font-size:0.88rem;font-weight:600;
+  padding:11px 20px 9px;
+  font-size:0.95rem;font-weight:700;
   color:var(--txt3);cursor:pointer;
-  border-bottom:2px solid transparent;transition:all .18s;
-  white-space:nowrap;
+  border-bottom:3px solid transparent;
+  margin-bottom:-2px;
+  transition:all .18s;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+}}
+.mkt-tab .mkt-tag{{
+  font-size:0.62rem;font-weight:800;
+  padding:1px 5px;border-radius:4px;
+  background:var(--brd);color:var(--txt3);
 }}
 .mkt-tab.active{{color:var(--bl);border-bottom-color:var(--bl);}}
+.mkt-tab.active .mkt-tag{{background:rgba(59,130,246,.18);color:var(--bl);}}
 .mkt-tab:hover:not(.active){{color:var(--txt2);}}
 
 /* ── STATUS BAR ── */
-.status-bar{{
+.sts-bar{{
   background:{STS_BG};
-  padding:6px clamp(14px,3vw,32px);
+  padding:7px clamp(14px,3vw,36px);
   display:flex;align-items:center;justify-content:space-between;
-  flex-wrap:wrap;gap:6px;
-  border-bottom:1px solid var(--brd);font-size:0.78rem;
+  flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--brd);
+  font-size:0.82rem;
 }}
-.sts-left{{display:flex;align-items:center;gap:10px;}}
-.sts-right{{display:flex;align-items:center;gap:12px;color:var(--txt3);}}
-.mkt-closed{{
-  display:flex;align-items:center;gap:6px;
-  color:{RD};font-weight:700;
-}}
-.mkt-open{{
-  display:flex;align-items:center;gap:6px;
-  color:{GR2};font-weight:700;
-}}
+.sts-l{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}}
+.sts-r{{display:flex;align-items:center;gap:14px;color:var(--txt3);font-size:0.76rem;}}
+.mkt-status{{display:flex;align-items:center;gap:7px;font-weight:700;}}
+.mkt-status.open{{color:{GR2};}}
+.mkt-status.closed{{color:{RD};}}
 .sts-dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0;}}
+.sts-dot.open{{background:{GR2};animation:pg 1.8s infinite;}}
 .sts-dot.closed{{background:{RD};animation:pr 1.8s infinite;}}
-.sts-dot.open  {{background:{GR2};animation:pg 1.8s infinite;}}
 @keyframes pg{{0%,100%{{box-shadow:0 0 0 0 rgba(34,197,94,.5)}}50%{{box-shadow:0 0 0 5px rgba(34,197,94,0)}}}}
 @keyframes pr{{0%,100%{{box-shadow:0 0 0 0 rgba(239,68,68,.5)}}50%{{box-shadow:0 0 0 5px rgba(239,68,68,0)}}}}
-.sts-ts{{color:var(--txt3);}}
-.sts-next{{color:{RD2};font-weight:600;}}
-.prog-bar-wrap{{
-  height:3px;background:var(--brd);
-  border-radius:2px;overflow:hidden;
-  width:clamp(60px,10vw,100px);
-}}
-.prog-bar-fill{{
-  height:100%;background:linear-gradient(90deg,{BL},{GR});
-  border-radius:2px;animation:prog 5s linear infinite;
-}}
-@keyframes prog{{0%{{width:0%}}100%{{width:100%}}}}
+.sts-next{{color:{RD2};font-weight:700;}}
+.sts-prog{{height:4px;background:var(--brd);border-radius:2px;overflow:hidden;width:80px;}}
+.sts-prog-fill{{height:100%;background:linear-gradient(90deg,{BL},{GR2});animation:prog 5s linear infinite;border-radius:2px;}}
+@keyframes prog{{0%{{width:5%}}100%{{width:100%}}}}
 
-/* ── MAIN CONTENT ── */
-.main-content{{
-  padding:clamp(14px,2.5vw,24px) clamp(14px,3vw,32px);
-  max-width:1440px;margin:0 auto;
-}}
+/* ── MAIN WRAP ── */
+.main-wrap{{padding:clamp(14px,2.5vw,24px) clamp(14px,3vw,36px);max-width:1500px;margin:0 auto;}}
 
 /* ── CONTROLS ROW ── */
-.ctrl-row{{
-  display:flex;align-items:center;gap:10px;
-  flex-wrap:wrap;margin-bottom:clamp(12px,2vw,18px);
-}}
-.search-wrap{{
-  flex:1;min-width:180px;max-width:340px;
-  position:relative;
-}}
-.search-inp{{
-  width:100%;height:40px;
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:10px;padding:0 38px 0 12px;
-  font-family:var(--font);font-size:0.88rem;color:var(--txt);
-  outline:none;transition:border-color .18s;
-  text-align:right;
-}}
-.search-inp:focus{{border-color:var(--bl);box-shadow:0 0 0 3px rgba(59,130,246,.15);}}
-.search-ico{{
-  position:absolute;left:11px;top:50%;transform:translateY(-50%);
-  font-size:0.95rem;color:var(--txt3);pointer-events:none;
-}}
-.dd-btn{{
-  height:40px;
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:10px;padding:0 14px;
-  display:flex;align-items:center;gap:8px;
-  font-family:var(--font);font-size:0.85rem;font-weight:600;color:var(--txt2);
-  cursor:pointer;white-space:nowrap;transition:border-color .18s;
-}}
-.dd-btn:hover{{border-color:var(--bl);color:var(--txt);}}
-.dd-arrow{{font-size:0.65rem;color:var(--txt3);}}
-.scan-btn{{
-  height:40px;padding:0 20px;
-  background:linear-gradient(135deg,#1D4ED8,#7C3AED);
-  border:none;border-radius:10px;
-  font-family:var(--font);font-size:0.88rem;font-weight:700;color:#fff;
-  cursor:pointer;white-space:nowrap;
-  box-shadow:0 4px 14px rgba(29,78,216,.4);
-  transition:all .2s;
-}}
-.scan-btn:hover{{transform:translateY(-1px);box-shadow:0 6px 20px rgba(29,78,216,.5);}}
-.refresh-btn{{
-  height:40px;padding:0 16px;
-  background:var(--card2);border:1px solid var(--brd);
-  border-radius:10px;font-family:var(--font);font-size:0.85rem;
-  font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap;
-  transition:all .18s;
-}}
-.refresh-btn:hover{{border-color:var(--bl);color:var(--bl);}}
+.ctrl-area{{margin-bottom:clamp(12px,2vw,18px);}}
 
-/* ── STAT CARDS ROW ── */
+/* ── STAT CARDS ── */
 .stats-row{{
   display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
   gap:clamp(8px,1.5vw,12px);margin-bottom:clamp(14px,2.5vw,20px);
@@ -262,79 +211,74 @@ section[data-testid="stSidebar"]{{display:none!important;}}
 @media(max-width:600px){{.stats-row{{grid-template-columns:repeat(2,1fr);}}}}
 .stat-card{{
   background:var(--card);border:1px solid var(--brd);
-  border-radius:12px;padding:clamp(12px,2vw,16px);
+  border-radius:14px;padding:clamp(12px,2vw,18px);
   text-align:center;box-shadow:var(--sh);
 }}
-.stat-label{{font-size:0.75rem;color:var(--txt3);margin-bottom:6px;}}
-.stat-val{{font-size:clamp(1.4rem,3.5vw,2rem);font-weight:900;line-height:1;}}
-.stat-val.c-wh{{color:var(--txt);}}
-.stat-val.c-gr{{color:{GR2};}}
-.stat-val.c-rd{{color:{RD2};}}
-.stat-val.c-am{{color:{AM2};}}
+.stat-lbl{{font-size:0.78rem;color:var(--txt3);margin-bottom:6px;}}
+.stat-v{{font-size:clamp(1.6rem,3.5vw,2.2rem);font-weight:900;line-height:1;}}
+.sv-wh{{color:var(--txt);}} .sv-gr{{color:{GR2};}} .sv-am{{color:{AM2};}} .sv-bl{{color:{BL};}}
 
 /* ── TABLE ── */
 .tbl-wrap{{
   background:var(--card);border:1px solid var(--brd);
   border-radius:14px;overflow:hidden;box-shadow:var(--sh);
 }}
-.tbl-head{{
-  background:var(--tblh);border-bottom:1px solid var(--brd);
-  padding:8px 0;
-}}
-.tbl-row{{
+/* الجدول الفعلي يعرض عبر st.dataframe */
+/* لكن الرأس نبنيه بـ HTML */
+.tbl-hdr-row{{
   display:grid;
-  grid-template-columns:80px 100px 90px 90px 80px 90px 90px 90px 80px 70px 90px;
-  align-items:center;padding:0 clamp(8px,1.5vw,16px);
+  grid-template-columns:50px 80px 110px 90px 70px 110px 110px 110px 110px 100px 100px 90px;
+  padding:8px clamp(8px,1.5vw,16px);
   border-bottom:1px solid var(--brd);
-  transition:background .14s;min-height:56px;
-  gap:0;
+  background:var(--tblh);
 }}
-.tbl-row:last-child{{border-bottom:none;}}
-.tbl-row:hover{{background:var(--tblhv);}}
-.tbl-row.hdr-row{{
-  font-size:0.7rem;font-weight:600;color:var(--txt3);
-  letter-spacing:0.8px;text-transform:uppercase;min-height:38px;
+.tbl-row-item{{
+  display:grid;
+  grid-template-columns:50px 80px 110px 90px 70px 110px 110px 110px 110px 100px 100px 90px;
+  padding:0 clamp(8px,1.5vw,16px);
+  border-bottom:1px solid var(--brd);
+  align-items:center;min-height:58px;
+  transition:background .14s;
 }}
-.tc{{padding:4px 8px;text-align:right;font-size:0.88rem;}}
-.tc.bold{{font-weight:700;color:var(--txt);}}
-.tc.c-gr{{color:{GR2};font-weight:600;}}
-.tc.c-rd{{color:{RD2};font-weight:600;}}
-.tc.c-am{{color:{AM2};font-weight:600;}}
-.tc.c-bl{{color:{BL};font-weight:600;}}
-.tc.muted{{color:var(--txt3);}}
-
-/* Status badges */
-.s-badge{{
-  display:inline-block;padding:3px 10px;border-radius:20px;
-  font-size:0.72rem;font-weight:700;white-space:nowrap;
+.tbl-row-item:last-child{{border-bottom:none;}}
+.tbl-row-item:hover{{background:var(--tblhv);}}
+.th{{
+  font-size:0.72rem;font-weight:700;color:var(--txt3);
+  text-align:right;padding:2px 6px;
+  letter-spacing:0.5px;
 }}
-.s-active {{background:rgba(34,197,94,.15);color:{GR2};}}
-.s-wait   {{background:rgba(245,158,11,.15);color:{AM};}}
-.s-closed {{background:rgba(148,163,184,.12);color:var(--txt3);}}
+.td{{font-size:0.92rem;text-align:right;padding:2px 6px;}}
+.td.bold{{font-weight:800;color:var(--txt);font-size:1rem;}}
+.td.num{{font-variant-numeric:tabular-nums;}}
+.td.c-gr{{color:{GR2};font-weight:700;}}
+.td.c-rd{{color:{RD2};font-weight:700;}}
+.td.c-am{{color:{AM2};font-weight:700;}}
+.td.c-bl{{color:{BL};font-weight:700;}}
+.td.muted{{color:var(--txt3);}}
 
 /* Stars */
-.stars{{display:flex;gap:2px;align-items:center;justify-content:flex-end;}}
-.star{{font-size:0.9rem;}}
-.star.on {{color:{AM2};}}
-.star.off{{color:var(--brd);}}
+.stars-row{{display:flex;gap:3px;justify-content:flex-end;}}
+.star-on{{color:{AM2};font-size:1.05rem;}}
+.star-off{{color:var(--brd);font-size:1.05rem;}}
 
-/* Grade pills */
-.gpill{{display:inline-flex;align-items:center;font-size:0.7rem;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:20px;}}
+/* Status badge */
+.sb{{display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;white-space:nowrap;}}
+.sb-active{{background:rgba(34,197,94,.15);color:{GR2};border:1px solid rgba(34,197,94,.3);}}
+.sb-wait  {{background:rgba(245,158,11,.15);color:{AM2};border:1px solid rgba(245,158,11,.3);}}
+.sb-closed{{background:rgba(148,163,184,.1);color:var(--txt3);border:1px solid var(--brd);}}
+
+/* Grade pill */
+.gp{{display:inline-flex;align-items:center;font-size:0.72rem;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:20px;}}
 .gp-ap{{background:{GL};color:{"#4ADE80" if DARK else "#15803D"};}}
 .gp-a {{background:{BLL};color:{"#93C5FD" if DARK else "#1D4ED8"};}}
 .gp-b {{background:{AL};color:{"#FCD34D" if DARK else "#854D0E"};}}
 .gp-sk{{background:var(--card2);color:var(--txt3);}}
 
-/* Card view */
-.cards-grid{{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
-  gap:clamp(10px,1.8vw,14px);
-}}
+/* ── CARD VIEW ── */
+.cards-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;}}
 .trade-card{{
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:14px;padding:16px;box-shadow:var(--sh);
-  transition:box-shadow .2s,transform .18s;cursor:pointer;
+  background:var(--card);border:1px solid var(--brd);border-radius:14px;
+  padding:18px;box-shadow:var(--sh);transition:box-shadow .2s,transform .18s;
   position:relative;overflow:hidden;
 }}
 .trade-card:hover{{box-shadow:var(--sh2);transform:translateY(-2px);}}
@@ -342,108 +286,95 @@ section[data-testid="stSidebar"]{{display:none!important;}}
   content:'';position:absolute;top:0;right:0;
   width:100%;height:3px;border-radius:14px 14px 0 0;
 }}
-.trade-card.long::before {{background:linear-gradient(90deg,{GR},{BL});}}
-.trade-card.short::before{{background:linear-gradient(90deg,{RD},{AM});}}
-.card-header{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}}
-.card-sym{{font-size:1.1rem;font-weight:900;color:var(--txt);}}
-.card-name{{font-size:0.72rem;color:var(--txt3);margin-top:2px;}}
-.card-body{{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;}}
-.card-field-l{{font-size:0.7rem;color:var(--txt3);}}
-.card-field-v{{font-size:0.88rem;font-weight:700;color:var(--txt2);}}
-.card-footer{{margin-top:12px;padding-top:10px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center;}}
-.card-date{{font-size:0.68rem;color:var(--txt3);}}
+.tc-long::before {{background:linear-gradient(90deg,{GR2},{BL});}}
+.tc-short::before{{background:linear-gradient(90deg,{RD},{AM});}}
+.card-top{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}}
+.card-sym{{font-size:1.15rem;font-weight:900;color:var(--txt);}}
+.card-name{{font-size:0.73rem;color:var(--txt3);margin-top:2px;}}
+.card-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}}
+.cf-l{{font-size:0.72rem;color:var(--txt3);margin-bottom:1px;}}
+.cf-v{{font-size:0.92rem;font-weight:700;}}
+.card-bot{{margin-top:12px;padding-top:10px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center;}}
+.card-date{{font-size:0.7rem;color:var(--txt3);}}
 
-/* Empty state */
-.empty-state{{text-align:center;padding:clamp(40px,7vw,70px) 20px;}}
-.empty-ico{{font-size:2.6rem;display:block;margin-bottom:12px;opacity:.5;}}
-.empty-tt{{font-size:1.05rem;font-weight:700;color:var(--txt3);margin-bottom:7px;}}
-.empty-sub{{font-size:0.85rem;color:var(--txt3);opacity:.7;}}
-
-/* Freshness banner */
-.fresh-banner{{
-  background:{"#052E1C" if DARK else "#ECFDF5"};
-  border:1px solid {"#166534" if DARK else "#A7F3D0"};
-  border-radius:10px;padding:8px 14px;
-  display:flex;align-items:center;gap:8px;font-size:0.78rem;
-  color:{"#4ADE80" if DARK else "#059669"};margin-bottom:12px;
-}}
-.exp-banner{{
-  background:{RL};border:1px solid {"#7F1D1D" if DARK else "#FECACA"};
-  border-radius:10px;padding:8px 14px;
-  display:flex;align-items:center;gap:8px;font-size:0.78rem;
-  color:{"#F87171" if DARK else "#DC2626"};margin-bottom:12px;
-}}
-
-/* Bottom detail panel */
-.detail-panel{{
+/* ── DETAIL PANEL ── */
+.detail-wrap{{
   background:var(--card);border:1px solid var(--brd);
-  border-radius:14px;padding:clamp(14px,2vw,20px);
-  box-shadow:var(--sh);margin-top:16px;
+  border-radius:14px;padding:clamp(14px,2vw,22px);
+  box-shadow:var(--sh);margin-top:18px;
 }}
-.detail-hdr{{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:14px;flex-wrap:wrap;gap:8px;
-}}
-.detail-sym{{font-size:1.2rem;font-weight:900;color:var(--bl);}}
-.detail-close{{
-  background:var(--card2);border:1px solid var(--brd);
-  border-radius:8px;padding:4px 12px;font-size:0.8rem;
-  color:var(--txt3);cursor:pointer;transition:all .15s;font-family:var(--font);
-}}
-.detail-close:hover{{border-color:var(--rd);color:var(--rd);}}
-.levels-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px;}}
-.level-card{{background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:10px 12px;}}
-.level-lbl{{font-size:0.65rem;color:var(--txt3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}}
-.level-val{{font-size:0.95rem;font-weight:800;}}
-.level-entry{{color:{BL};}} .level-sl{{color:{RD};}}
-.level-tp{{color:{GR};}}    .level-ext{{color:{AM};}}
+.detail-top{{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}}
+.detail-sym{{font-size:1.3rem;font-weight:900;color:var(--bl);}}
+.levels-g{{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-top:12px;}}
+.lev-card{{background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:10px 13px;}}
+.lev-lbl{{font-size:0.65rem;color:var(--txt3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;}}
+.lev-v{{font-size:1rem;font-weight:800;}}
+.lev-entry{{color:{BL};}} .lev-sl{{color:{RD};}} .lev-tp{{color:{GR};}} .lev-ext{{color:{AM};}}
+.lev-sub{{font-size:0.67rem;color:var(--txt3);margin-top:2px;}}
 
-/* Progress bar streamlit override */
+/* ── FRESHNESS ── */
+.f-ok {{background:{"#052E1C" if DARK else "#ECFDF5"};border:1px solid {"#166534" if DARK else "#A7F3D0"};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{"#4ADE80" if DARK else "#059669"};margin-bottom:12px;}}
+.f-warn{{background:{AL};border:1px solid {AM};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{AM};margin-bottom:12px;}}
+.f-exp {{background:{RL};border:1px solid {"#7F1D1D" if DARK else "#FECACA"};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{"#F87171" if DARK else "#DC2626"};margin-bottom:12px;}}
+
+/* ── EMPTY ── */
+.empty{{text-align:center;padding:60px 20px;}}
+.empty-i{{font-size:2.8rem;opacity:.4;display:block;margin-bottom:12px;}}
+.empty-t{{font-size:1.05rem;font-weight:700;color:var(--txt3);margin-bottom:6px;}}
+.empty-s{{font-size:0.85rem;color:var(--txt3);opacity:.7;}}
+
+/* ── FOOTER ── */
+.habbi-footer{{
+  background:{"#0A0C14" if DARK else "#0F172A"};
+  padding:22px clamp(14px,3vw,36px);
+  border-top:1px solid rgba(59,130,246,.2);
+  margin-top:36px;
+}}
+.ft-top{{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;}}
+.ft-brand{{font-size:1.1rem;font-weight:800;color:#fff;}}
+.ft-contact{{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.35);
+  border-radius:20px;padding:6px 16px;font-size:0.82rem;color:#93C5FD;
+  text-decoration:none;transition:background .15s;
+}}
+.ft-contact:hover{{background:rgba(59,130,246,.25);}}
+.ft-links{{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;}}
+.ft-link{{font-size:0.78rem;color:rgba(255,255,255,.45);text-decoration:none;}}
+.ft-link:hover{{color:rgba(255,255,255,.75);text-decoration:underline;}}
+.ft-disc{{
+  font-size:0.75rem;color:rgba(255,255,255,.35);
+  text-align:center;line-height:1.6;
+}}
+.ft-disc-bar{{
+  background:#000;padding:8px 16px;
+  border-radius:6px;margin-top:10px;
+  font-size:0.72rem;color:rgba(255,255,255,.55);text-align:center;
+}}
+
+/* Streamlit overrides */
 div[data-testid="stProgressBar"]>div>div{{background:linear-gradient(90deg,#1D4ED8,#22C55E)!important;border-radius:3px!important;}}
 div[data-testid="stProgressBar"]>div{{background:var(--brd)!important;border-radius:3px!important;}}
 div[data-testid="stSuccess"]{{background:{"#052E1C" if DARK else "#F0FDF4"}!important;border:1px solid {"#166534" if DARK else "#A7F3D0"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
 div[data-testid="stError"]  {{background:{"#2D0A0A" if DARK else "#FEF2F2"}!important;border:1px solid {"#7F1D1D" if DARK else "#FECACA"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
 div[data-testid="stWarning"]{{background:{"#1F1300" if DARK else "#FFFBEB"}!important;border:1px solid {"#78350F" if DARK else "#FDE68A"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
 div[data-testid="stInfo"]   {{background:{"#0F1E4A" if DARK else "#EFF6FF"}!important;border:1px solid {"#1E3A8A" if DARK else "#BFDBFE"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
-.stButton>button{{
-  font-family:var(--font)!important;font-size:0.9rem!important;font-weight:700!important;
-  border-radius:10px!important;padding:10px 20px!important;transition:all .18s!important;
-  border:none!important;min-height:42px!important;
-}}
-.stButton>button[kind="primary"]{{
-  background:linear-gradient(135deg,#1D4ED8,#7C3AED)!important;color:#fff!important;
-  box-shadow:0 4px 14px rgba(29,78,216,.4)!important;
-}}
+.stButton>button{{font-family:var(--font)!important;font-size:0.9rem!important;font-weight:700!important;border-radius:10px!important;padding:10px 20px!important;transition:all .18s!important;border:none!important;min-height:42px!important;}}
+.stButton>button[kind="primary"]{{background:linear-gradient(135deg,#1D4ED8,#7C3AED)!important;color:#fff!important;box-shadow:0 4px 14px rgba(29,78,216,.4)!important;}}
 .stButton>button[kind="primary"]:hover{{transform:translateY(-1px)!important;}}
 .stButton>button:not([kind="primary"]){{background:var(--card2)!important;color:var(--txt2)!important;border:1px solid var(--brd)!important;}}
 div[data-baseweb="select"]>div{{background:var(--card)!important;border:1px solid var(--brd)!important;border-radius:10px!important;font-family:var(--font)!important;font-size:0.88rem!important;color:var(--txt)!important;min-height:40px!important;}}
 div[data-baseweb="select"]>div:focus-within{{border-color:var(--bl)!important;box-shadow:0 0 0 3px rgba(59,130,246,.15)!important;}}
 div[data-baseweb="input"]>div{{background:var(--card)!important;border:1px solid var(--brd)!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;min-height:40px!important;}}
 .stSelectbox label,.stTextInput label,.stMultiSelect label,.stRadio label{{font-family:var(--font)!important;font-size:0.8rem!important;font-weight:600!important;color:var(--txt3)!important;}}
-
-/* FOOTER */
-.habi-ft{{
-  background:{"#0A0C14" if DARK else "#1E1B4B"};
-  padding:16px clamp(14px,3vw,32px);
-  text-align:center;border-top:1px solid rgba(59,130,246,.2);
-  margin-top:32px;
-}}
-.habi-ft-txt{{font-size:0.78rem;color:rgba(255,255,255,.5);}}
-.habi-ft-link{{color:{BL};font-weight:700;text-decoration:none;}}
-.habi-ft-link:hover{{color:#93C5FD;}}
-
 hr{{border:none!important;border-top:1px solid var(--brd)!important;margin:6px 0!important;}}
-@media(max-width:900px){{
-  .tbl-row{{grid-template-columns:70px 80px 80px 80px 70px 80px 80px;}}
-  .tc.hide-mobile{{display:none;}}
-}}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  CACHED ENGINE  — 24h freshness
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  CACHED ENGINE
+# ══════════════════════════════════════════════════════
 @st.cache_data(ttl=300, show_spinner=False)
 def _run(ticker, smt):
     return E.run_engine(ticker, smt)
@@ -452,715 +383,665 @@ def _run(ticker, smt):
 def _row(ticker, smt):
     try:
         res = E.run_engine(ticker, smt)
-        return E.extract_row(res[0], ticker, smt)
+        row = E.extract_row(res[0], ticker, smt)
+        # سجّل السعر الحالي
+        try: row["_cur"] = float(res[1]["Close"].iloc[-1])
+        except: row["_cur"] = None
+        return row
     except Exception:
-        return E.extract_row(None, ticker, smt)
+        r = E.extract_row(None, ticker, smt)
+        r["_cur"] = None
+        return r
 
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  HELPERS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 def _age_h(ts):
-    """عمر البيانات بالساعات"""
     if ts is None: return 9999
     u = ts.astimezone(timezone.utc) if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - u).total_seconds() / 3600
+    return (datetime.now(timezone.utc)-u).total_seconds()/3600
 
-def _is_exp(ts, h=24):
-    return _age_h(ts) >= h
-
+def _is_exp(ts, h=24): return _age_h(ts)>=h
 def _rr(v):
     try: return float(str(v).replace("1:",""))
     except: return 0.0
 
 def _stars(grade):
-    """نجوم حسب الـ Grade"""
-    n = {"A+":3,"A":3,"B":2,"C":1}.get(grade,0)
-    return "".join(['<span class="star on">★</span>' if i<n
-                    else '<span class="star off">☆</span>'
-                    for i in range(3)])
+    n={"A+":3,"A":3,"B":2,"C":1}.get(grade,0)
+    return "".join(
+        [f'<span class="star-on">★</span>' if i<n
+         else f'<span class="star-off">☆</span>' for i in range(3)])
 
-def _status_badge(grade, score_str):
-    """شارة الحالة مثل الصور"""
-    try: sc = int(str(score_str).split("/")[0])
-    except: sc = 0
-    if grade == "A+": return '<span class="s-badge s-active">نشط</span>'
-    if grade == "A":  return '<span class="s-badge s-active">نشط</span>'
-    if grade == "B":  return '<span class="s-badge s-wait">منتظر</span>'
-    return '<span class="s-badge s-closed">مغلق</span>'
+def _sbadge(grade):
+    if grade in ("A+","A"): return '<span class="sb sb-active">نشط</span>'
+    if grade=="B":           return '<span class="sb sb-wait">منتظر</span>'
+    return                          '<span class="sb sb-closed">مغلق</span>'
 
 def _gpill(g):
-    c = {"A+":"gp-ap","A":"gp-a","B":"gp-b"}.get(g,"gp-sk")
-    return f'<span class="gpill {c}">{g}</span>'
+    c={"A+":"gp-ap","A":"gp-a","B":"gp-b"}.get(g,"gp-sk")
+    return f'<span class="gp {c}">{g}</span>'
+
+def _sa_name(ticker):
+    m={t:n for t,n in SA_STOCKS}
+    return m.get(ticker,ticker)
 
 
-# ══════════════════════════════════════════════════════════════
-#  MARKET STATUS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  MARKET STATUS  — ساعات صحيحة
+# ══════════════════════════════════════════════════════
 def _us_market():
     try:
-        import pytz; et=pytz.timezone("US/Eastern"); now=datetime.now(et)
-    except Exception:
-        now=datetime.now(timezone.utc)
-    wd=now.weekday(); h,m=now.hour,now.minute
-    is_open = wd<5 and (h,m)>=(9,30) and (h,m)<(16,0)
-    def ts(hh,mm): return hh*3600+mm*60
-    ns=ts(h,m)+now.second
+        import pytz; now=datetime.now(pytz.timezone("US/Eastern"))
+    except: now=datetime.now(timezone.utc)-timedelta(hours=4)
+    wd=now.weekday(); h,m,s=now.hour,now.minute,now.second
+    is_open=wd<5 and (h,m)>=(9,30) and (h,m)<(16,0)
+    def secs(hh,mm): return hh*3600+mm*60
+    ns=secs(h,m)+s
     if is_open:
-        rem=max(ts(16,0)-ns,0); hh,r=divmod(rem,3600); mm2,ss=divmod(r,60)
-        cd=f"{hh:02d}:{mm2:02d}:{ss:02d}"
-        return is_open, f"يغلق بعد {cd}"
+        rem=max(secs(16,0)-ns,0); hh2,r=divmod(rem,3600); mm2,ss2=divmod(r,60)
+        return True, f"يغلق بعد: {hh2:02d}:{mm2:02d}:{ss2:02d}"
+    # حساب الوقت حتى فتح السوق بدقة
+    if wd<5 and (h,m)<(9,30):
+        nxt=secs(9,30)-ns
     else:
-        if wd<5 and (h,m)<(9,30): nxt=max(ts(9,30)-ns,1)
-        else:
-            days=(7-wd)%7 or 1; nxt=days*86400+ts(9,30)-ns%86400
-        nxt=max(int(nxt),1); hh,r=divmod(nxt,3600); mm2,ss=divmod(r,60)
-        return is_open, f"يفتح بعد {hh}س{mm2}د{ss}"
+        # أيام حتى الإثنين
+        days_ahead=(7-wd)%7
+        if days_ahead==0: days_ahead=7
+        nxt=days_ahead*86400+secs(9,30)-ns%86400
+    nxt=max(int(nxt),1); hh2,r=divmod(nxt,3600); mm2,ss2=divmod(r,60)
+    # عرض بساعات ودقائق فقط (ليس 108 ساعة!)
+    if hh2>=24:
+        days=hh2//24; hh2=hh2%24
+        return False, f"يفتح بعد: {days}ي {hh2}س {mm2}د"
+    return False, f"يفتح بعد: {hh2}س {mm2}د {ss2}ث"
 
 def _sa_market():
-    """السوق السعودي: الأحد-الخميس 10:00-15:00 بتوقيت الرياض"""
     try:
-        import pytz; tz=pytz.timezone("Asia/Riyadh"); now=datetime.now(tz)
-    except Exception:
-        now=datetime.now(timezone.utc)+timedelta(hours=3)
-    wd=now.weekday(); h,m=now.hour,now.minute
-    # 0=Mon..4=Fri..5=Sat..6=Sun → السوق السعودي: 6=Sun=0 عربي إلى 3=Thu=4
-    # نجعل الأسبوع: Sun(6),Mon(0),Tue(1),Wed(2),Thu(3) = أيام عمل
-    sa_workday = wd in (6,0,1,2,3)
-    is_open = sa_workday and (h,m)>=(10,0) and (h,m)<(15,0)
-    def ts(hh,mm): return hh*3600+mm*60
-    ns=ts(h,m)+now.second
+        import pytz; now=datetime.now(pytz.timezone("Asia/Riyadh"))
+    except: now=datetime.now(timezone.utc)+timedelta(hours=3)
+    wd=now.weekday(); h,m,s=now.hour,now.minute,now.second
+    # السوق السعودي: أحد(6)-خميس(3)، 10:00-15:00
+    sa_work=wd in (6,0,1,2,3)
+    is_open=sa_work and (h,m)>=(10,0) and (h,m)<(15,0)
+    def secs(hh,mm): return hh*3600+mm*60
+    ns=secs(h,m)+s
     if is_open:
-        rem=max(ts(15,0)-ns,0); hh,r=divmod(rem,3600); mm2,ss=divmod(r,60)
-        return is_open, f"يغلق بعد {hh}س{mm2}د"
+        rem=max(secs(15,0)-ns,0); hh2,r=divmod(rem,3600); mm2,ss2=divmod(r,60)
+        return True, f"يغلق بعد: {hh2:02d}:{mm2:02d}:{ss2:02d}"
+    # حساب الوقت حتى الفتح
+    if sa_work and (h,m)<(10,0):
+        nxt=secs(10,0)-ns
     else:
-        return is_open, f"يفتح بعد 6س34د"
+        # أيام حتى الأحد القادم
+        # wd: 0=Mon,1=Tue,2=Wed,3=Thu,4=Fri,5=Sat,6=Sun
+        if wd==3 and (h,m)>=(15,0): days_ahead=3   # خميس بعد الإغلاق → أحد
+        elif wd==4: days_ahead=2  # جمعة
+        elif wd==5: days_ahead=1  # سبت
+        else: days_ahead=1
+        nxt=days_ahead*86400+secs(10,0)-ns%86400
+    nxt=max(int(nxt),1); hh2,r=divmod(nxt,3600); mm2,ss2=divmod(r,60)
+    if hh2>=24:
+        days=hh2//24; hh2=hh2%24
+        return False, f"يفتح بعد: {days}ي {hh2}س {mm2}د"
+    return False, f"يفتح بعد: {hh2}س {mm2}د"
 
 
-# ══════════════════════════════════════════════════════════════
-#  TOP HEADER
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  HEADER
+# ══════════════════════════════════════════════════════
 def render_header():
-    now_str = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    # Theme label
-    theme_ico = "🌙" if not DARK else "☀️"
+    now_s = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    theme_ico = "☀️" if DARK else "🌙"
 
     st.markdown(f"""
 <div class="top-hdr">
-  <div class="hdr-left">
+  <div class="hdr-brand">
     <div class="brand-logo">ح</div>
     <div>
       <div class="brand-name">منصة الحبي للتداول</div>
       <div class="brand-sub">تداول ذكي • تحليل متقدم</div>
     </div>
   </div>
-  <div class="hdr-right">
-    <div class="hdr-time" id="hdr-clock">{now_str}</div>
-    <div class="hdr-btn" title="تنبيهات">🔔</div>
-    <div class="hdr-btn" title="صوت">🔊</div>
+  <div class="hdr-controls">
+    <div class="hdr-icon-btn" title="🔕 تنبيهات">🔔</div>
+    <div class="hdr-icon-btn" title="🔊 صوت">🔊</div>
+    <div class="hdr-clock" id="hdr-clk">{now_s}</div>
   </div>
 </div>
 <script>
 (function(){{
   function tick(){{
-    var d=new Date(); var h=String(d.getUTCHours()).padStart(2,'0');
-    var m=String(d.getUTCMinutes()).padStart(2,'0');
-    var s=String(d.getUTCSeconds()).padStart(2,'0');
-    var el=document.getElementById('hdr-clock');
-    if(el) el.textContent=h+':'+m+':'+s;
+    var d=new Date();
+    var el=document.getElementById('hdr-clk');
+    if(el){{
+      var h=String(d.getUTCHours()).padStart(2,'0');
+      var m=String(d.getUTCMinutes()).padStart(2,'0');
+      var s=String(d.getUTCSeconds()).padStart(2,'0');
+      el.textContent=h+':'+m+':'+s;
+    }}
   }}
   setInterval(tick,1000);
 }})();
-</script>
-""", unsafe_allow_html=True)
+</script>""", unsafe_allow_html=True)
 
-    # Theme + Refresh buttons using Streamlit (outside HTML)
-    tb_col = st.columns([8,1,1])[1]
-    with tb_col:
-        if st.button("☀️" if DARK else "🌙", use_container_width=True, key="theme_btn"):
+    # زر تبديل الثيم — في نفس الصف
+    _, tc = st.columns([11, 1])
+    with tc:
+        if st.button(theme_ico, use_container_width=True, key="theme_btn"):
             st.session_state.theme = "light" if DARK else "dark"
             st.rerun()
 
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  MARKET TABS
-# ══════════════════════════════════════════════════════════════
-def render_market_tabs():
+# ══════════════════════════════════════════════════════
+def render_tabs():
     t = st.session_state.market_tab
     sa_cls = "mkt-tab active" if t=="SA" else "mkt-tab"
     us_cls = "mkt-tab active" if t=="US" else "mkt-tab"
+
     st.markdown(f"""
-<div class="mkt-tabs-bar">
-  <span class="sa-tag" style="font-size:.7rem;font-weight:700;color:{BL};margin-left:4px;">SA</span>
-  <span class="{sa_cls}" id="tab-sa">السوق السعودي</span>
-  <span class="{us_cls}" id="tab-us">
-    <span style="font-size:.7rem;font-weight:700;color:{TXT2};margin-left:4px;">US</span>
-    السوق الأمريكي
+<div class="mkt-tabs">
+  <span class="{sa_cls}">
+    <span class="mkt-tag">SA</span>السوق السعودي
+  </span>
+  <span class="{us_cls}">
+    <span class="mkt-tag">US</span>السوق الأمريكي
   </span>
 </div>""", unsafe_allow_html=True)
 
-    tc1, tc2, _ = st.columns([1,1,8])
-    with tc1:
+    c1, c2, _ = st.columns([1,1,10])
+    with c1:
         if st.button("🇸🇦 سعودي", use_container_width=True,
-                     type="primary" if t=="SA" else "secondary", key="tab_sa"):
-            st.session_state.market_tab = "SA"
-            st.session_state.radar_df   = None
-            st.session_state.radar_ts   = None
+                     type="primary" if t=="SA" else "secondary", key="btn_sa"):
+            st.session_state.market_tab="SA"
+            st.session_state.radar_df=None
+            st.session_state.radar_ts=None
             st.rerun()
-    with tc2:
+    with c2:
         if st.button("🇺🇸 أمريكي", use_container_width=True,
-                     type="primary" if t=="US" else "secondary", key="tab_us"):
-            st.session_state.market_tab = "US"
-            st.session_state.radar_df   = None
-            st.session_state.radar_ts   = None
+                     type="primary" if t=="US" else "secondary", key="btn_us"):
+            st.session_state.market_tab="US"
+            st.session_state.radar_df=None
+            st.session_state.radar_ts=None
             st.rerun()
 
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  STATUS BAR
-# ══════════════════════════════════════════════════════════════
-def render_status_bar(ts):
-    mkt = st.session_state.market_tab
+# ══════════════════════════════════════════════════════
+def render_status(ts):
+    mkt=st.session_state.market_tab
     is_open, cd_str = _sa_market() if mkt=="SA" else _us_market()
-    dot_cls = "open" if is_open else "closed"
-    status_txt = "السوق مفتوح" if is_open else "السوق مغلق"
-    status_cls = "mkt-open" if is_open else "mkt-closed"
-    ts_str = ts.astimezone(timezone.utc).strftime("%H:%M:%S") if ts else "--:--:--"
-    age_h  = _age_h(ts)
-    next_txt = f"يفتح بعد: {cd_str}" if not is_open else f"يغلق بعد: {cd_str}"
+    dot="open" if is_open else "closed"
+    stxt="السوق مفتوح" if is_open else "السوق مغلق"
+    scls="open" if is_open else "closed"
+    ts_str=ts.astimezone(timezone.utc).strftime("%H:%M:%S") if ts else "--:--:--"
 
     st.markdown(f"""
-<div class="status-bar">
-  <div class="sts-left">
-    <div class="{status_cls}">
-      <div class="sts-dot {dot_cls}"></div>
-      {status_txt}
+<div class="sts-bar">
+  <div class="sts-l">
+    <div class="mkt-status {scls}">
+      <div class="sts-dot {dot}"></div>{stxt}
     </div>
-    <span class="sts-next">{next_txt}</span>
-    <div class="prog-bar-wrap"><div class="prog-bar-fill"></div></div>
+    <span class="sts-next">{cd_str}</span>
+    <div class="sts-prog"><div class="sts-prog-fill"></div></div>
   </div>
-  <div class="sts-right">
-    <span class="sts-ts">آخر تحديث: {ts_str}</span>
+  <div class="sts-r">
+    <span>آخر تحديث: {ts_str}</span>
     <span>التحديث كل 5 دقائق</span>
   </div>
 </div>""", unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  STAT CARDS (4 boxes like the screenshots)
-# ══════════════════════════════════════════════════════════════
-def render_stat_cards(df):
-    if df is None or df.empty:
-        total=0; active=0; waiting=0; closed=0
-    else:
-        total   = len(df)
-        active  = len(df[df["Grade"].isin(["A+","A"])])
-        waiting = len(df[df["Grade"]=="B"])
-        closed  = len(df[df["Grade"].isin(["SKIP","C","ERR","TIMEOUT"])])
-
+# ══════════════════════════════════════════════════════
+#  STAT CARDS — تظهر فقط عند وجود بيانات كاملة
+#  لا تظهر عند البحث عن رمز واحد
+# ══════════════════════════════════════════════════════
+def render_stat_cards(df, search_active=False):
+    if df is None or df.empty or search_active:
+        return   # ← لا تعرض البطاقات عند البحث
+    total  = len(df)
+    active = len(df[df["Grade"].isin(["A+","A"])])
+    wait   = len(df[df["Grade"]=="B"])
+    skip   = len(df[df["Grade"].isin(["SKIP","C","ERR","TIMEOUT"])])
     st.markdown(f"""
 <div class="stats-row">
-  <div class="stat-card">
-    <div class="stat-label">إجمالي الصفقات</div>
-    <div class="stat-val c-wh">{total}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">صفقات نشطة</div>
-    <div class="stat-val c-gr">{active}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">صفقات منتظرة</div>
-    <div class="stat-val c-am">{waiting}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">صفقات مغلقة</div>
-    <div class="stat-val c-wh">{closed}</div>
-  </div>
+  <div class="stat-card"><div class="stat-lbl">إجمالي الصفقات</div><div class="stat-v sv-wh">{total}</div></div>
+  <div class="stat-card"><div class="stat-lbl">صفقات نشطة</div><div class="stat-v sv-gr">{active}</div></div>
+  <div class="stat-card"><div class="stat-lbl">صفقات منتظرة</div><div class="stat-v sv-am">{wait}</div></div>
+  <div class="stat-card"><div class="stat-lbl">غير مؤهلة</div><div class="stat-v sv-wh">{skip}</div></div>
 </div>""", unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  CONTROLS ROW (search + filters + scan button)
-# ══════════════════════════════════════════════════════════════
-def render_controls_row(watchlist_name_key):
-    mkt = st.session_state.market_tab
-
-    col_dd1, col_dd2, col_dd3, col_scan, col_ref = st.columns([1.4,1.4,1.4,1.2,1.2])
-
-    with col_dd1:
-        # بحث
-        search = st.text_input("ابحث بالرمز أو الاسم",
-                               value=st.session_state.search_q,
-                               placeholder="ابحث بالرمز أو الاسم...",
-                               label_visibility="collapsed",
-                               key="search_input")
-        st.session_state.search_q = search
-
-    with col_dd2:
-        GRADE_OPT = ["جميع القوة","A+ فقط (ذهبي)","A+ و A (ممتاز)","B فأعلى"]
-        grade_sel = st.selectbox("تصفية حسب القوة", GRADE_OPT,
-                                  index=GRADE_OPT.index(st.session_state.filter_grade)
-                                  if st.session_state.filter_grade in GRADE_OPT else 0,
-                                  label_visibility="collapsed",
-                                  key="grade_filter_dd")
-        st.session_state.filter_grade = grade_sel
-
-    with col_dd3:
-        SORT_OPT = ["ترتيب بالقوة","ترتيب بـ R:R","ترتيب بالرمز"]
-        sort_sel = st.selectbox("ترتيب", SORT_OPT,
-                                 index=SORT_OPT.index(st.session_state.sort_by)
-                                 if st.session_state.sort_by in SORT_OPT else 0,
-                                 label_visibility="collapsed",
-                                 key="sort_dd")
-        st.session_state.sort_by = sort_sel
-
-    with col_scan:
-        scan_clicked = st.button("📡 مسح الرادار", type="primary",
-                                  use_container_width=True, key="scan_btn_main")
-
-    with col_ref:
-        ref_clicked = st.button("🔄 تحديث", use_container_width=True, key="ref_btn_main")
-        if ref_clicked:
+# ══════════════════════════════════════════════════════
+#  CONTROLS ROW
+# ══════════════════════════════════════════════════════
+def render_controls():
+    c1,c2,c3,c4,c5 = st.columns([2,1.4,1.4,1.2,1.1])
+    with c1:
+        s=st.text_input("بحث","",placeholder="ابحث بالرمز…",
+                         label_visibility="collapsed",key="srch_inp")
+        st.session_state.search_q=s.strip().upper()
+    with c2:
+        GO=["جميع القوة","A+ ذهبي فقط","A+ و A (ممتاز)","B فأعلى"]
+        gf=st.selectbox("قوة",GO,index=GO.index(st.session_state.filter_grade)
+                         if st.session_state.filter_grade in GO else 0,
+                         label_visibility="collapsed",key="gf_dd")
+        st.session_state.filter_grade=gf
+    with c3:
+        SO=["ترتيب بالقوة","ترتيب بـ R:R","ترتيب بالرمز"]
+        sv=st.selectbox("ترتيب",SO,index=SO.index(st.session_state.sort_by)
+                         if st.session_state.sort_by in SO else 0,
+                         label_visibility="collapsed",key="sort_dd")
+        st.session_state.sort_by=sv
+    with c4:
+        scan=st.button("📡 مسح الرادار",type="primary",
+                        use_container_width=True,key="scan_main")
+    with c5:
+        if st.button("🔄 تحديث",use_container_width=True,key="ref_main"):
             _run.clear(); _row.clear()
-            st.session_state.radar_df = None
-            st.session_state.radar_ts = None
+            st.session_state.radar_df=None
+            st.session_state.radar_ts=None
             st.rerun()
 
-    # View mode toggle
-    VIEW_OPT = ["بطاقات","جدول"]
-    vm_col,_ = st.columns([2,8])
-    with vm_col:
-        vm = st.radio("عرض", VIEW_OPT,
-                      index=VIEW_OPT.index(st.session_state.view_mode),
-                      horizontal=True, label_visibility="collapsed",
-                      key="view_mode_radio")
-        st.session_state.view_mode = vm
+    # عرض + قائمة US
+    vc1,vc2,_ = st.columns([1.5,2,8])
+    with vc1:
+        vm=st.radio("عرض",["جدول","بطاقات"],
+                     index=["جدول","بطاقات"].index(st.session_state.view_mode),
+                     horizontal=True,label_visibility="collapsed",key="vm_r")
+        st.session_state.view_mode=vm
+    with vc2:
+        if st.session_state.market_tab=="US":
+            us_k=st.selectbox("قائمة",list(US_WATCHLIST_MAP.keys()),
+                               index=list(US_WATCHLIST_MAP.keys()).index(
+                                   st.session_state.us_wl)
+                               if st.session_state.us_wl in US_WATCHLIST_MAP else 0,
+                               label_visibility="collapsed",key="us_wl_dd")
+            st.session_state.us_wl=us_k
 
-    return scan_clicked
+    return scan
 
 
-# ══════════════════════════════════════════════════════════════
-#  SCAN ENGINE
-# ══════════════════════════════════════════════════════════════
-def do_scan(watchlist, min_wk=8.0):
-    E.SWEEP_WICK_MIN = float(min_wk)
-    total, results = len(watchlist), []
-    pb = st.progress(0, text="جارٍ المسح…")
-    done = 0
+# ══════════════════════════════════════════════════════
+#  SCAN
+# ══════════════════════════════════════════════════════
+def do_scan(watchlist, cheap_mode=False):
+    E.SWEEP_WICK_MIN=8.0
+    total,results=len(watchlist),[]
+    pb=st.progress(0,text="جارٍ المسح…")
+    done=0
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futs = {pool.submit(_row, p[0], p[1]): p for p in watchlist}
+        futs={pool.submit(_row,p[0],p[1]):p for p in watchlist}
         for fut in as_completed(futs):
-            tkr, smt = futs[fut]
-            try:   r = fut.result(timeout=25)
+            tkr,smt=futs[fut]
+            try: r=fut.result(timeout=25)
             except TimeoutError:
-                r = E.extract_row(None, tkr, smt); r["Grade"]="TIMEOUT"
+                r=E.extract_row(None,tkr,smt); r["Grade"]="TIMEOUT"; r["_cur"]=None
+            # الأسهم الرخيصة: نفلتر Long فقط
+            if cheap_mode and r.get("Bias","")=="Short":
+                r["Grade"]="SKIP"; r["_grade_rank"]=99; r["_score_num"]=0
+            r["_scan_date"]=datetime.now().strftime("%Y-%m-%d")
             results.append(r); done+=1
-            g = r.get("Grade","?"); sym={"A+":"⭐","A":"✅","B":"⚠️"}.get(g,"·")
-            pb.progress(done/total, text=f"مسح {done}/{total} · {tkr} {sym}")
+            g=r.get("Grade","?"); sym={"A+":"⭐","A":"✅","B":"⚠️"}.get(g,"·")
+            pb.progress(done/total,text=f"مسح {done}/{total} · {tkr} {sym}")
     pb.empty()
-    df = (pd.DataFrame(results)
-            .sort_values(by=["_grade_rank","_score_num"], ascending=[True,False])
-            .reset_index(drop=True))
-    st.session_state.radar_df = df
-    st.session_state.radar_ts = datetime.now(timezone.utc)
-    # إضافة حقل التاريخ
-    df["scan_date"] = datetime.now().strftime("%Y-%m-%d")
+    df=(pd.DataFrame(results)
+          .sort_values(by=["_grade_rank","_score_num"],ascending=[True,False])
+          .reset_index(drop=True))
+    st.session_state.radar_df=df
+    st.session_state.radar_ts=datetime.now(timezone.utc)
     n_ap=len(df[df["Grade"]=="A+"]); n_a=len(df[df["Grade"]=="A"]); n_b=len(df[df["Grade"]=="B"])
     st.success(f"✅ اكتمل المسح · {len(df)} رمزاً · A+: {n_ap} · A: {n_a} · B: {n_b}")
 
 
-# ══════════════════════════════════════════════════════════════
-#  FILTER DATA  (search + grade + sort)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  FILTER
+# ══════════════════════════════════════════════════════
 def apply_filters(df):
-    if df is None or df.empty: return df
-
-    # تصفية قديمة (24 ساعة)
-    ts = st.session_state.radar_ts
-    if _is_exp(ts, 24):
-        return pd.DataFrame()
-
-    d = df.copy()
-
-    # فلتر بحث
-    q = st.session_state.search_q.strip().upper()
-    if q:
-        d = d[d["Ticker"].str.contains(q, na=False)]
-
-    # فلتر Grade
-    gf = st.session_state.filter_grade
-    if gf == "A+ فقط (ذهبي)":     d = d[d["Grade"]=="A+"]
-    elif gf == "A+ و A (ممتاز)":    d = d[d["Grade"].isin(["A+","A"])]
-    elif gf == "B فأعلى":           d = d[d["Grade"].isin(["A+","A","B"])]
-
-    # ترتيب
-    s = st.session_state.sort_by
-    if s == "ترتيب بـ R:R":
-        d["_rr_num"] = d["Best R:R"].apply(_rr)
-        d = d.sort_values("_rr_num", ascending=False)
-    elif s == "ترتيب بالرمز":
-        d = d.sort_values("Ticker")
-    # else: default grade rank
-
+    if df is None or df.empty: return pd.DataFrame()
+    if _is_exp(st.session_state.radar_ts,24): return pd.DataFrame()
+    d=df.copy()
+    q=st.session_state.search_q
+    if q: d=d[d["Ticker"].str.contains(q,na=False)]
+    gf=st.session_state.filter_grade
+    if gf=="A+ ذهبي فقط":      d=d[d["Grade"]=="A+"]
+    elif gf=="A+ و A (ممتاز)":  d=d[d["Grade"].isin(["A+","A"])]
+    elif gf=="B فأعلى":          d=d[d["Grade"].isin(["A+","A","B"])]
+    sv=st.session_state.sort_by
+    if sv=="ترتيب بـ R:R":
+        d["_rr_n"]=d["Best R:R"].apply(_rr); d=d.sort_values("_rr_n",ascending=False)
+    elif sv=="ترتيب بالرمز": d=d.sort_values("Ticker")
     return d.reset_index(drop=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  TABLE VIEW  (matches screenshots)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  TABLE VIEW
+# ══════════════════════════════════════════════════════
 def render_table(df, sa_mode=False):
     if df is None or df.empty:
-        st.markdown("""
-<div class="empty-state">
-  <span class="empty-ico">📭</span>
-  <div class="empty-tt">لا توجد صفقات مطابقة للبحث</div>
-  <div class="empty-sub">ابدأ مسح الرادار أو عدّل الفلاتر</div>
-</div>""", unsafe_allow_html=True)
+        st.markdown('<div class="empty"><span class="empty-i">📭</span>'
+                    '<div class="empty-t">لا توجد صفقات مطابقة</div>'
+                    '<div class="empty-s">ابدأ مسح الرادار أو عدّل الفلاتر</div></div>',
+                    unsafe_allow_html=True)
         return
 
-    # Header row
-    header = """
-<div class="tbl-wrap">
-<div class="tbl-head">
-<div class="tbl-row hdr-row">
-  <div class="tc">الرمز</div>
-  <div class="tc">الاسم</div>
-  <div class="tc">التاريخ</div>
-  <div class="tc">الحالة</div>
-  <div class="tc">القوة</div>
-  <div class="tc">نقطة الدخول</div>
-  <div class="tc">السعر الحالي</div>
-  <div class="tc">الربح/الخسارة</div>
-  <div class="tc">وقف الخسارة</div>
-  <div class="tc">الهدف 1</div>
-  <div class="tc">الهدف 2</div>
-</div>
-</div>"""
+    # رأس الجدول
+    html = '<div class="tbl-wrap">'
+    html += ('<div class="tbl-hdr-row">'
+             '<div class="th">#</div>'
+             '<div class="th">الرمز</div>'
+             '<div class="th">الاسم</div>'
+             '<div class="th">التاريخ</div>'
+             '<div class="th">الحالة</div>'
+             '<div class="th">القوة</div>'
+             '<div class="th">نقطة الدخول</div>'
+             '<div class="th">السعر الحالي</div>'
+             '<div class="th">وقف الخسارة</div>'
+             '<div class="th">هدف 1</div>'
+             '<div class="th">الموجة الكاملة</div>'
+             '<div class="th">نوع السيولة</div>'
+             '</div>')
 
-    rows_html = ""
-    for _, row in df.iterrows():
-        ticker  = str(row.get("Ticker","?"))
-        grade   = str(row.get("Grade","?"))
-        score   = str(row.get("Score","—"))
-        bias    = str(row.get("Bias","—"))
-        entry   = row.get("Entry","—")
-        sl      = row.get("SL","—")
-        tp1     = row.get("TP1","—")
-        tp2     = row.get("TP2 (Ext)","—")
-        rr      = row.get("Best R:R","—")
-        liq     = str(row.get("نوع السيولة","—"))
-        scan_dt = row.get("scan_date", datetime.now().strftime("%Y-%m-%d"))
+    for idx, row in df.iterrows():
+        row_num  = idx+1
+        ticker   = str(row.get("Ticker","?"))
+        grade    = str(row.get("Grade","?"))
+        score    = str(row.get("Score","—"))
+        bias     = str(row.get("Bias","—"))
+        entry    = row.get("Entry","—")
+        sl       = row.get("SL","—")
+        tp1      = row.get("TP1","—")
+        # الموجة الكاملة
+        wave     = row.get("Wave Target","—")
+        if wave in (None,"","—",0,0.0): wave = row.get("TP2 (Ext)","—")
+        liq      = str(row.get("نوع السيولة","—"))
+        cur      = row.get("_cur",None)
+        scan_dt  = row.get("_scan_date",datetime.now().strftime("%Y-%m-%d"))
 
-        # اسم السهم (للسعودي)
-        name = ""
-        if sa_mode:
-            sa_map = {t:n for t,n,_ in SA_STOCKS}
-            name = sa_map.get(ticker, ticker)
-        else:
-            name = ticker
+        name = _sa_name(ticker) if sa_mode else ticker
+        cur_str  = f"{cur:.3f}" if cur else str(entry)
+        # الأسهم الرخيصة: الموجة غير موجودة في engine بشكل مختلف — نعرض "—" إذا فارغة
+        if wave in (None,"","—","0","0.0",0,0.0): wave="—"
 
-        # PnL estimate (تقريبي)
         try:
-            e_f = float(str(entry)); sl_f = float(str(sl))
-            pnl_pct = ((e_f - sl_f)/sl_f*100) if sl_f else 0
-            pnl_str = f"+{pnl_pct:.2f}%" if pnl_pct>=0 else f"{pnl_pct:.2f}%"
-            pnl_cls = "c-gr" if pnl_pct>=0 else "c-rd"
+            e_f=float(str(entry)); c_f=float(str(cur or entry))
+            pnl=(c_f-e_f)/e_f*100 if bias=="Long" else (e_f-c_f)/e_f*100
+            cur_cls="c-gr" if pnl>=0 else "c-rd"
         except:
-            pnl_str="—"; pnl_cls="muted"
+            cur_cls="muted"
 
-        stars_html = f'<div class="stars">{_stars(grade)}</div>'
-        badge_html = _status_badge(grade, score)
-        bias_cls   = "c-gr" if bias=="Long" else "c-rd" if bias=="Short" else "muted"
+        stars_h = f'<div class="stars-row">{_stars(grade)}</div>'
+        badge_h = _sbadge(grade)
+        bias_cls = "c-gr" if bias=="Long" else "c-rd"
 
-        rows_html += f"""
-<div class="tbl-row" onclick="">
-  <div class="tc bold">{ticker}</div>
-  <div class="tc">{name}</div>
-  <div class="tc muted">{scan_dt}</div>
-  <div class="tc">{badge_html}</div>
-  <div class="tc">{stars_html}</div>
-  <div class="tc {bias_cls}">{entry}</div>
-  <div class="tc {bias_cls}">{entry}</div>
-  <div class="tc {pnl_cls}">{pnl_str}</div>
-  <div class="tc c-rd">{sl}</div>
-  <div class="tc c-gr">{tp1}</div>
-  <div class="tc c-am">{tp2}</div>
-</div>"""
+        html += (f'<div class="tbl-row-item">'
+                 f'<div class="td muted">{row_num}</div>'
+                 f'<div class="td bold">{ticker}</div>'
+                 f'<div class="td">{name}</div>'
+                 f'<div class="td muted">{scan_dt}</div>'
+                 f'<div class="td">{badge_h}</div>'
+                 f'<div class="td">{stars_h}</div>'
+                 f'<div class="td num {bias_cls}">{entry}</div>'
+                 f'<div class="td num {cur_cls}">{cur_str}</div>'
+                 f'<div class="td num c-rd">{sl}</div>'
+                 f'<div class="td num c-gr">{tp1}</div>'
+                 f'<div class="td num c-am">{wave}</div>'
+                 f'<div class="td muted" style="font-size:.82rem;">{liq}</div>'
+                 f'</div>')
 
-    st.markdown(header + rows_html + "</div>", unsafe_allow_html=True)
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  CARD VIEW  (بطاقات)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  CARD VIEW
+# ══════════════════════════════════════════════════════
 def render_cards(df, sa_mode=False):
     if df is None or df.empty:
-        st.markdown("""
-<div class="empty-state">
-  <span class="empty-ico">📭</span>
-  <div class="empty-tt">لا توجد صفقات مطابقة</div>
-  <div class="empty-sub">ابدأ مسح الرادار أو عدّل الفلاتر</div>
-</div>""", unsafe_allow_html=True)
+        st.markdown('<div class="empty"><span class="empty-i">📭</span>'
+                    '<div class="empty-t">لا توجد صفقات</div></div>',
+                    unsafe_allow_html=True)
         return
 
-    cards_html = '<div class="cards-grid">'
+    html = '<div class="cards-grid">'
     for _, row in df.iterrows():
         ticker = str(row.get("Ticker","?"))
         grade  = str(row.get("Grade","?"))
-        score  = str(row.get("Score","—"))
         bias   = str(row.get("Bias","—"))
         entry  = row.get("Entry","—")
         sl     = row.get("SL","—")
         tp1    = row.get("TP1","—")
-        tp2    = row.get("TP2 (Ext)","—")
+        wave   = row.get("Wave Target","—")
+        if wave in (None,"","—","0","0.0",0,0.0): wave=row.get("TP2 (Ext)","—")
+        if wave in (None,"","—","0","0.0",0,0.0): wave="—"
         rr     = row.get("Best R:R","—")
         liq    = str(row.get("نوع السيولة","—"))
         mss    = str(row.get("MSS","—"))
-        scan_dt= row.get("scan_date",datetime.now().strftime("%Y-%m-%d"))
+        scan_dt= row.get("_scan_date",datetime.now().strftime("%Y-%m-%d"))
+        name   = _sa_name(ticker) if sa_mode else ticker
 
-        name = ""
-        if sa_mode:
-            sa_map = {t:n for t,n,_ in SA_STOCKS}
-            name = sa_map.get(ticker, ticker)
-        else:
-            name = ticker
+        bc     = "tc-long" if bias=="Long" else "tc-short"
+        bias_ar= "شراء ▲" if bias=="Long" else "بيع ▼"
+        bias_c = GR2 if bias=="Long" else RD2
+        stars_h= f'<div class="stars-row">{_stars(grade)}</div>'
+        badge_h= _sbadge(grade)
+        pill_h = _gpill(grade)
 
-        bias_cls  = "long" if bias=="Long" else "short"
-        bias_ar   = "شراء ▲" if bias=="Long" else "بيع ▼"
-        bias_col  = GR2 if bias=="Long" else RD2
-        stars_h   = f'<div class="stars">{_stars(grade)}</div>'
-        badge_h   = _status_badge(grade, score)
-        pill_h    = _gpill(grade)
-
-        cards_html += f"""
-<div class="trade-card {bias_cls}">
-  <div class="card-header">
-    <div>
-      <div class="card-sym">{ticker}</div>
-      <div class="card-name">{name}</div>
-    </div>
-    <div style="text-align:left;">
-      {pill_h}
-      <div style="margin-top:4px;">{stars_h}</div>
-    </div>
-  </div>
-  <div class="card-body">
-    <div><div class="card-field-l">الاتجاه</div>
-         <div class="card-field-v" style="color:{bias_col};">{bias_ar}</div></div>
-    <div><div class="card-field-l">نقطة الدخول</div>
-         <div class="card-field-v">{entry}</div></div>
-    <div><div class="card-field-l">وقف الخسارة</div>
-         <div class="card-field-v" style="color:{RD2};">{sl}</div></div>
-    <div><div class="card-field-l">هدف 1</div>
-         <div class="card-field-v" style="color:{GR};">{tp1}</div></div>
-    <div><div class="card-field-l">الموجة الكاملة</div>
-         <div class="card-field-v" style="color:{AM};">{tp2}</div></div>
-    <div><div class="card-field-l">أفضل R:R</div>
-         <div class="card-field-v">{rr}</div></div>
-    <div><div class="card-field-l">نوع السيولة</div>
-         <div class="card-field-v">{liq}</div></div>
-    <div><div class="card-field-l">MSS</div>
-         <div class="card-field-v">{mss}</div></div>
-  </div>
-  <div class="card-footer">
-    <span class="card-date">📅 {scan_dt}</span>
-    {badge_h}
-  </div>
-</div>"""
-
-    cards_html += "</div>"
-    st.markdown(cards_html, unsafe_allow_html=True)
+        html += (f'<div class="trade-card {bc}">'
+                 f'<div class="card-top">'
+                 f'<div><div class="card-sym">{ticker}</div>'
+                 f'<div class="card-name">{name}</div></div>'
+                 f'<div style="text-align:left;">{pill_h}<div style="margin-top:4px;">{stars_h}</div></div>'
+                 f'</div>'
+                 f'<div class="card-grid">'
+                 f'<div><div class="cf-l">الاتجاه</div>'
+                 f'<div class="cf-v" style="color:{bias_c}">{bias_ar}</div></div>'
+                 f'<div><div class="cf-l">نقطة الدخول</div>'
+                 f'<div class="cf-v">{entry}</div></div>'
+                 f'<div><div class="cf-l">وقف الخسارة</div>'
+                 f'<div class="cf-v" style="color:{RD2}">{sl}</div></div>'
+                 f'<div><div class="cf-l">هدف 1</div>'
+                 f'<div class="cf-v" style="color:{GR}">{tp1}</div></div>'
+                 f'<div><div class="cf-l">الموجة الكاملة</div>'
+                 f'<div class="cf-v" style="color:{AM}">{wave}</div></div>'
+                 f'<div><div class="cf-l">أفضل R:R</div>'
+                 f'<div class="cf-v">{rr}</div></div>'
+                 f'<div><div class="cf-l">نوع السيولة</div>'
+                 f'<div class="cf-v" style="font-size:.82rem">{liq}</div></div>'
+                 f'<div><div class="cf-l">MSS</div>'
+                 f'<div class="cf-v" style="font-size:.82rem">{mss}</div></div>'
+                 f'</div>'
+                 f'<div class="card-bot">'
+                 f'<span class="card-date">📅 {scan_dt}</span>{badge_h}'
+                 f'</div></div>')
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
-#  DETAIL PANEL  (شارت + تحليل عند الضغط على رمز)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+#  DETAIL PANEL
+# ══════════════════════════════════════════════════════
 def render_detail(df, watchlist):
     if df is None or df.empty: return
-    tickers = df["Ticker"].tolist() if not df.empty else []
+    tickers=df["Ticker"].tolist()
     if not tickers: return
 
-    dc1, dc2, _ = st.columns([2, 1, 7])
+    dc1,dc2,_ = st.columns([2,1,9])
     with dc1:
-        sel = st.selectbox("🔬 اختر الرمز للتحليل التفصيلي",
-                            tickers, key="drill_sel",
-                            label_visibility="visible")
+        sel=st.selectbox("🔬 اختر الرمز للتحليل",tickers,
+                          key="drill_sel",label_visibility="visible")
     with dc2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        load_btn = st.button("تحميل الشارت", use_container_width=True, key="drill_load")
+        st.markdown("<br>",unsafe_allow_html=True)
+        load=st.button("تحميل الشارت",use_container_width=True,key="drill_load")
 
-    if load_btn and sel:
-        st.session_state.drill = sel
+    if load and sel: st.session_state.drill=sel
 
     if st.session_state.drill and st.session_state.drill in tickers:
-        tkr   = st.session_state.drill
-        smt_p = next((s for t,s in watchlist if t==tkr), "QQQ")
-        row   = df[df["Ticker"]==tkr]
-        grade = row["Grade"].values[0] if not row.empty else "—"
+        tkr=st.session_state.drill
+        smt_p=next((s for t,s in watchlist if t==tkr),"QQQ")
+        row=df[df["Ticker"]==tkr]
+        grade=row["Grade"].values[0] if not row.empty else "—"
 
-        with st.spinner(f"تحميل تحليل {tkr}…"):
+        with st.spinner(f"تحميل {tkr}…"):
             try:
-                res = _run(tkr, smt_p)
-                setup, df_d, df_h1, df_m15, liq_lvls, sw_d, dol = res
-                cur = float(df_d["Close"].iloc[-1])
+                res=_run(tkr,smt_p)
+                setup,df_d,df_h1,df_m15,liq_lvls,sw_d,dol=res
+                cur=float(df_d["Close"].iloc[-1])
             except Exception as ex:
                 st.error(f"خطأ: {ex}"); return
 
-        # Levels summary
         if setup:
+            # Panel
+            wave_str=f"{setup.wave_target:.4f}" if setup.wave_target else "—"
+            tp_cards=""
+            for t in setup.targets[:4]:
+                cls="lev-ext" if t.kind in ("ext_liq","ext_ext") else "lev-tp"
+                lbl=t.label[:22] if len(t.label)>22 else t.label
+                tp_cards+=(f'<div class="lev-card">'
+                           f'<div class="lev-lbl">{lbl}</div>'
+                           f'<div class="lev-v {cls}">{t.price:.4f}</div>'
+                           f'<div class="lev-sub">R:R {t.rr:.1f}x</div></div>')
+
             st.markdown(f"""
-<div class="detail-panel">
-  <div class="detail-hdr">
-    <div>
+<div class="detail-wrap">
+  <div class="detail-top">
+    <div style="display:flex;align-items:center;gap:10px;">
       <span class="detail-sym">{tkr}</span>
       {_gpill(grade)}
-      <span style="color:{TXT3};font-size:.8rem;margin-right:8px;">
-        نوع السيولة: {setup.liquidity_type}
-      </span>
+      <span style="font-size:.82rem;color:{TXT3};">نوع السيولة: {setup.liquidity_type}</span>
     </div>
   </div>
-  <div class="levels-grid">
-    <div class="level-card">
-      <div class="level-lbl">نقطة الدخول</div>
-      <div class="level-val level-entry">{setup.entry:.4f}</div>
-      <div style="font-size:.68rem;color:{TXT3};">50% EQ · IFVG</div>
+  <div class="levels-g">
+    <div class="lev-card">
+      <div class="lev-lbl">نقطة الدخول</div>
+      <div class="lev-v lev-entry">{setup.entry:.4f}</div>
+      <div class="lev-sub">50% EQ · IFVG</div>
     </div>
-    <div class="level-card">
-      <div class="level-lbl">وقف الخسارة</div>
-      <div class="level-val level-sl">{setup.stop_loss:.4f}</div>
+    <div class="lev-card">
+      <div class="lev-lbl">وقف الخسارة</div>
+      <div class="lev-v lev-sl">{setup.stop_loss:.4f}</div>
     </div>
-    {"".join([f'<div class="level-card"><div class="level-lbl">{t.label[:20]}</div><div class="level-val {"level-ext" if t.kind in ("ext_liq","ext_ext") else "level-tp"}">{t.price:.4f}</div><div style="font-size:.68rem;color:{TXT3};">R:R {t.rr:.1f}x</div></div>' for t in setup.targets[:4]])}
+    {tp_cards}
+    <div class="lev-card">
+      <div class="lev-lbl">🎯 الموجة الكاملة</div>
+      <div class="lev-v lev-ext">{wave_str}</div>
+      <div class="lev-sub">External Liquidity</div>
+    </div>
   </div>
 </div>""", unsafe_allow_html=True)
 
-        # Chart
-        cc, lc = st.columns([2.8, 1], gap="medium")
+        cc,lc = st.columns([2.8,1],gap="medium")
         with cc:
-            fig = E.build_chart(df_d, setup, liq_lvls, sw_d, dol,
-                                 ticker=tkr, n_candles=80, htf_interval="1d")
-            st.plotly_chart(fig, use_container_width=True,
+            fig=E.build_chart(df_d,setup,liq_lvls,sw_d,dol,
+                               ticker=tkr,n_candles=80,htf_interval="1d")
+            st.plotly_chart(fig,use_container_width=True,
                             config={"displayModeBar":True,"displaylogo":False,
                                     "modeBarButtonsToRemove":["select2d","lasso2d"]})
         with lc:
-            # Decision log compact
             if setup:
                 st.markdown("**سجل القرار**")
                 for lg in setup.decision_log:
-                    dc = "🟢" if lg.score_delta>0 else "🔴" if lg.score_delta<0 else "⚪"
-                    st.markdown(f"{dc} **{lg.stage}**  \n{lg.finding}  \n+{lg.score_delta} نقطة")
+                    ico="🟢" if lg.score_delta>0 else "🔴" if lg.score_delta<0 else "⚪"
+                    st.markdown(f"{ico} **{lg.stage}**  \n{lg.finding}  \n*{lg.score_delta:+d} نقطة*")
                     st.markdown("---")
 
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  FOOTER
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 def render_footer():
     st.markdown("""
-<div class="habi-ft">
-  <span class="habi-ft-txt">
-    © 2025 منصة الحبي للتداول. هذه المنصة لأغراض تعليمية فقط ولا تتحمل أي التزامات مالية.
-    &nbsp;|&nbsp;
-    <a href="https://quantomoption.com/" class="habi-ft-link" target="_blank">quantomoption.com</a>
-  </span>
+<div class="habbi-footer">
+  <div class="ft-top">
+    <div class="ft-brand">🦅 منصة الحبي للتداول</div>
+    <a href="mailto:support@alhabbi.com" class="ft-contact">
+      ✉️ &nbsp;تواصل مع الإدارة
+    </a>
+  </div>
+  <div class="ft-links">
+    <span class="ft-link">إخلاء المسؤولية واتفاقية الاستخدام</span>
+    <span style="color:rgba(255,255,255,.2)">•</span>
+    <span class="ft-link">سياسة الخصوصية</span>
+    <span style="color:rgba(255,255,255,.2)">•</span>
+    <span class="ft-link">منصة تعليمية – ليست نصيحة مالية</span>
+    <span style="color:rgba(255,255,255,.2)">•</span>
+    <span style="font-size:.78rem;color:rgba(255,255,255,.4);">© 2026</span>
+  </div>
+  <div class="ft-disc-bar">
+    جميع البيانات لأغراض تثقيفية وتعليمية فقط وليست توصية مالية.
+    التداول ينطوي على مخاطر عالية. استخدامك للمنصة يعني موافقتك على
+    <span style="text-decoration:underline;cursor:pointer;">إخلاء المسؤولية</span>.
+  </div>
 </div>""", unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 #  MAIN
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 def main():
-    # Header
     render_header()
+    render_tabs()
 
-    # Market tabs
-    render_market_tabs()
+    mkt=st.session_state.market_tab
 
-    mkt = st.session_state.market_tab
-
-    # Determine watchlist
-    if mkt == "SA":
-        watchlist      = SA_WATCHLIST
-        watchlist_name = "السوق السعودي"
-        sa_mode        = True
+    # تحديد القائمة
+    if mkt=="SA":
+        watchlist=SA_WATCHLIST; sa_mode=True; cheap_mode=False
     else:
-        # US — default to Tech 30
-        us_key    = "تقنية كبرى (30)"
-        watchlist = US_WATCHLIST_MAP[us_key]
-        watchlist_name = us_key
-        sa_mode   = False
+        wl_key=st.session_state.us_wl
+        watchlist=US_WATCHLIST_MAP.get(wl_key,US_WATCHLIST_MAP["تقنية كبرى (30)"])
+        sa_mode=False
+        cheap_mode=(wl_key==CHEAP_KEY)
 
-    # Status bar
-    render_status_bar(st.session_state.radar_ts)
+    render_status(st.session_state.radar_ts)
 
-    # Main content
-    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+    st.markdown('<div class="main-wrap">', unsafe_allow_html=True)
 
-    # Controls row
-    scan_clicked = render_controls_row(watchlist_name)
+    scan=render_controls()
 
-    # Sidebar for US watchlist selection (compact)
-    if mkt == "US":
-        wl_col, _ = st.columns([2, 8])
-        with wl_col:
-            us_sel = st.selectbox(
-                "قائمة المراقبة",
-                list(US_WATCHLIST_MAP.keys()),
-                key="us_wl_sel",
-                label_visibility="visible"
-            )
-            watchlist = US_WATCHLIST_MAP[us_sel]
+    if scan:
+        do_scan(watchlist, cheap_mode=cheap_mode)
 
-    # Trigger scan
-    if scan_clicked:
-        do_scan(watchlist)
-
-    # Freshness check — 24h
-    ts = st.session_state.radar_ts
-    df = st.session_state.radar_df
+    # Freshness
+    ts=st.session_state.radar_ts; df=st.session_state.radar_df
+    search_active = bool(st.session_state.search_q.strip())
 
     if ts is not None:
-        h = _age_h(ts)
-        if h >= 24:
-            st.markdown("""
-<div class="exp-banner">
-  ⏰ البيانات انتهت صلاحيتها (أكثر من 24 ساعة) — تم الإخفاء تلقائياً. اضغط مسح الرادار.
-</div>""", unsafe_allow_html=True)
-            df = None
-        elif h >= 12:
-            st.markdown(f"""
-<div style="background:{AL};border:1px solid {AM};border-radius:10px;padding:8px 14px;
-font-size:.78rem;color:{AM};margin-bottom:12px;">
-  ⚠️ البيانات عمرها {h:.0f} ساعة — يُنصح بالتحديث قريباً
-</div>""", unsafe_allow_html=True)
+        h=_age_h(ts)
+        if h>=24:
+            st.markdown('<div class="f-exp">⏰ البيانات انتهت صلاحيتها (أكثر من 24 ساعة) — يُرجى إعادة المسح.</div>',
+                        unsafe_allow_html=True)
+            df=None
+        elif h>=12:
+            st.markdown(f'<div class="f-warn">⚠️ البيانات عمرها {h:.0f} ساعة — يُنصح بالتحديث.</div>',
+                        unsafe_allow_html=True)
         else:
-            ts_str = ts.astimezone(timezone.utc).strftime("%H:%M UTC")
-            st.markdown(f"""
-<div class="fresh-banner">
-  ✅ بيانات حية · آخر مسح: {ts_str} (منذ {h:.0f} ساعة)
-</div>""", unsafe_allow_html=True)
+            ts_s=ts.astimezone(timezone.utc).strftime("%H:%M UTC")
+            st.markdown(f'<div class="f-ok">✅ بيانات حية · آخر مسح: {ts_s} (منذ {h:.1f} ساعة)</div>',
+                        unsafe_allow_html=True)
 
-    # Stat cards
-    render_stat_cards(df)
+    # بطاقات الإحصاء — لا تظهر عند البحث
+    render_stat_cards(df, search_active=search_active)
 
-    # Filter + display
-    filtered = apply_filters(df) if df is not None else None
+    # فلترة
+    filtered=apply_filters(df) if df is not None else None
 
-    view_mode = st.session_state.view_mode
-    if view_mode == "جدول":
+    if st.session_state.view_mode=="جدول":
         render_table(filtered, sa_mode=sa_mode)
     else:
         render_cards(filtered, sa_mode=sa_mode)
 
-    # Detail / Drill
+    # تفاصيل
     if filtered is not None and not filtered.empty:
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br>",unsafe_allow_html=True)
         render_detail(filtered, watchlist)
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-    # Footer
     render_footer()
 
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
