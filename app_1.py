@@ -1,166 +1,157 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import time
 
-# --- 1. إعدادات الصفحة والهوية البصرية ---
+# --- 1. إعدادات المنصة والهوية البصرية ---
 st.set_page_config(
-    page_title="منصة الحبي للتداول",
+    page_title="منصة الحبي للتداول | ICT Radar",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# تطبيق التنسيق الاحترافي (McKinsey Style & Dark UI)
+# تطبيق CSS مخصص للحفاظ على الفخامة واللون الداكن
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;700&display=swap');
     
-    /* تنسيق الحاوية الرئيسية */
-    .main { background-color: #0d1117; color: #e5e7eb; }
     html, body, [class*="css"] {
         font-family: 'Noto Kufi Arabic', sans-serif;
-        direction: RTL; text-align: right;
+        direction: RTL;
+        text-align: right;
+    }
+    
+    .stApp {
+        background-color: #0d1117;
     }
 
-    /* تصميم البطاقات (Trade Cards) */
+    /* تصميم بطاقات الصفقات */
     .trade-card {
         background-color: #161b26;
-        border: 1px solid #374151;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        transition: all 0.3s ease;
+        border: 1px solid #1f2937;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 10px;
+        transition: transform 0.3s ease;
     }
     .trade-card:hover {
+        transform: translateY(-5px);
         border-color: #3b82f6;
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
     }
 
-    /* تخصيص الـ Metrics */
-    [data-testid="stMetricValue"] { color: white; font-weight: bold; }
-    
-    /* شريط الحالة */
-    .status-bar {
-        background-color: #0f1520;
-        border: 1px solid #1f2937;
-        padding: 10px 20px;
-        border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-
-    /* التذييل */
-    .footer {
-        text-align: center;
-        color: #6b7280;
-        font-size: 11px;
+    /* الهيدر */
+    .main-header {
+        background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%);
         padding: 20px;
-        border-top: 1px solid #1f2937;
-        margin-top: 50px;
+        border-radius: 12px;
+        border-right: 5px solid #3b82f6;
+        margin-bottom: 25px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. منطق البيانات (Backend Logic) ---
-# ملاحظة: هنا يمكنك لاحقاً ربط المنصة ببيانات حقيقية عبر API
-def load_data(market_type):
-    if market_type == "🇸🇦 السوق السعودي":
-        data = [
-            {"الرمز": "2222", "الاسم": "أرامكو", "الحالة": "نشط", "القوة": 3, "الدخول": 28.50, "الهدف": 29.50, "الوقف": 27.80, "الحالي": 29.10},
-            {"الرمز": "1120", "الاسم": "الراجحي", "الحالة": "نشط", "القوة": 3, "الدخول": 95.00, "الهدف": 97.00, "الوقف": 93.50, "الحالي": 96.20},
-            {"الرمز": "2010", "الاسم": "سابك", "الحالة": "منتظر", "القوة": 2, "الدخول": 78.00, "الهدف": 80.00, "الوقف": 76.50, "الحالي": 77.40},
+# --- 2. قاعدة البيانات (محاكاة) ---
+# ملاحظة: يمكنك مستقبلاً ربط هذه القائمة بملف Excel أو API مباشر
+if 'market_data' not in st.session_state:
+    st.session_state.market_data = {
+        "السوق السعودي 🇸🇦": [
+            {"الرمز": "2222", "الشركة": "أرامكو", "الحالة": "نشط", "القوة": 3, "الدخول": 28.50, "الهدف": 30.50, "الوقف": 27.80, "الحالي": 29.15},
+            {"الرمز": "1120", "الشركة": "الراجحي", "الحالة": "انتظار", "القوة": 3, "الدخول": 95.00, "الهدف": 102.00, "الوقف": 93.50, "الحالي": 94.80},
+            {"الرمز": "2010", "الشركة": "سابك", "الحالة": "نشط", "القوة": 2, "الدخول": 78.00, "الهدف": 82.50, "الوقف": 76.80, "الحالي": 79.30},
+        ],
+        "السوق الأمريكي 🇺🇸": [
+            {"الرمز": "AAPL", "الشركة": "Apple", "الحالة": "نشط", "القوة": 3, "الدخول": 190.00, "الهدف": 215.00, "الوقف": 185.00, "الحالي": 198.40},
+            {"الرمز": "NVDA", "الشركة": "Nvidia", "الحالة": "نشط", "القوة": 3, "الدخول": 880.00, "الهدف": 950.00, "الوقف": 860.00, "الحالي": 912.00},
         ]
-    else:
-        data = [
-            {"الرمز": "AAPL", "الاسم": "Apple", "الحالة": "نشط", "القوة": 3, "الدخول": 192.00, "الهدف": 198.00, "الوقف": 188.00, "الحالي": 196.50},
-            {"الرمز": "NVDA", "الاسم": "Nvidia", "الحالة": "نشط", "القوة": 3, "الدخول": 880.00, "الهدف": 920.00, "الوقف": 860.00, "الحالي": 910.00},
-        ]
-    return pd.DataFrame(data)
+    }
 
-# --- 3. واجهة المستخدم (Header) ---
-col_head1, col_head2 = st.columns([4, 1])
-with col_head1:
-    st.title("منصة الحبي للتداول")
-    st.caption("تحليل ذكي • تداول متقدم • استراتيجيات ICT")
-
-with col_head2:
-    st.markdown(f"""<div style="text-align:left; font-family:monospace; color:#9ca3af; margin-top:20px;">
-                {datetime.now().strftime('%H:%M:%S')}</div>""", unsafe_allow_html=True)
-
-# تبيويب الأسواق
-market = st.radio("اختر السوق", ["🇸🇦 السوق السعودي", "🇺🇸 السوق الأمريكي"], horizontal=True, label_visibility="collapsed")
-df = load_data(market)
-
-# شريط الحالة
-st.markdown(f"""
-    <div class="status-bar">
-        <div><span style="color:#4ade80;">●</span> السوق مفتوح حالياً</div>
-        <div style="font-size:12px; color:#6b7280;">آخر تحديث للأسعار: {datetime.now().strftime('%H:%M:%S')}</div>
+# --- 3. الهيدر وشريط الأدوات ---
+st.markdown("""
+    <div class="main-header">
+        <h1 style="color: white; margin:0;">منصة الحبي للتداول</h1>
+        <p style="color: #60a5fa; margin:0;">رادار اقتناص الفرص بناءً على مدرسة ICT</p>
     </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# --- 4. الإحصائيات السريعة ---
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("إجمالي الصفقات", len(df))
-c2.metric("نشطة", len(df[df['الحالة']=="نشط"]), delta="↑")
-c3.metric("بانتظار الدخول", len(df[df['الحالة']=="منتظر"]))
-c4.metric("مكتملة", "0")
+col_m1, col_m2 = st.columns([2, 1])
+with col_m1:
+    market_choice = st.radio("اختر السوق المستهدف:", list(st.session_state.market_data.keys()), horizontal=True)
 
-st.write("---")
+with col_m2:
+    st.markdown(f"**الوقت الآن:** `{datetime.now().strftime('%H:%M:%S')}`")
+
+# --- 4. ملخص الإحصائيات (Metrics) ---
+current_trades = st.session_state.market_data[market_choice]
+total = len(current_trades)
+active = len([t for t in current_trades if t['الحالة'] == "نشط"])
+waiting = total - active
+
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("إجمالي الفرص", total)
+m2.metric("فرص نشطة", active, delta="جاري المتابعة", delta_color="normal")
+m3.metric("بانتظار الدخول", waiting)
+m4.metric("الأهداف المحققة", "12", delta="فرصة ناجحة")
+
+st.divider()
 
 # --- 5. البحث والفلترة ---
-col_search, col_filter, col_view = st.columns([2, 1, 1])
-search = col_search.text_input("🔍 ابحث بالرمز أو الاسم...", placeholder="أدخل اسم الشركة")
-view_mode = col_view.selectbox("نمط العرض", ["بطاقات احترافية", "جدول بيانات"])
+col_s1, col_s2 = st.columns([3, 1])
+search = col_s1.text_input("🔍 ابحث عن سهم محدد (الرمز أو الاسم):")
+sort_opt = col_s2.selectbox("ترتيب حسب:", ["الأقوى", "الأحدث"])
 
-# منطق الفلترة
-filtered_df = df[df['الاسم'].str.contains(search) | df['الرمز'].str.contains(search)]
+# --- 6. عرض الفرص (Grid System) ---
+st.subheader(f"الفرص المتاحة في {market_choice}")
 
-# --- 6. عرض النتائج ---
-if view_mode == "بطاقات احترافية":
+# تصفية البيانات بناءً على البحث
+filtered_trades = [t for t in current_trades if search.lower() in t['الشركة'].lower() or search in t['الرمز']]
+
+if not filtered_trades:
+    st.warning("لا توجد نتائج تطابق بحثك حالياً.")
+else:
     cols = st.columns(3)
-    for i, row in enumerate(filtered_df.to_dict('records')):
+    for i, trade in enumerate(filtered_trades):
         with cols[i % 3]:
             # حساب نسبة التقدم للهدف
-            progress = min(100, max(0, int((row['الحالي'] - row['الدخول']) / (row['الهدف'] - row['الدخول']) * 100))) if row['الحالة'] == "نشط" else 0
-            color = "#4ade80" if row['الحالي'] >= row['الدخول'] else "#f87171"
+            diff_total = trade['الهدف'] - trade['الدخول']
+            diff_current = trade['الحالي'] - trade['الدخول']
+            progress = min(100, max(0, int((diff_current / diff_total) * 100))) if trade['الحالة'] == "نشط" else 0
             
+            # عرض البطاقة باستخدام HTML داخل بايثون لجمالية التصميم
             st.markdown(f"""
                 <div class="trade-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 1.1rem; font-weight: bold;">{row['الرمز']}</span>
-                        <span style="font-size: 0.8rem; background: #1e293b; padding: 2px 10px; border-radius: 20px;">{row['الحالة']}</span>
-                    </div>
-                    <div style="color: #9ca3af; font-size: 0.8rem; margin-bottom: 15px;">{row['الاسم']} | {'⭐' * row['القوة']}</div>
-                    <div style="background: #0d1117; padding: 12px; border-radius: 8px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
-                            <span>الدخول: <b>{row['الدخول']}</b></span>
-                            <span style="color:{color};">الحالي: <b>{row['الحالي']}</b></span>
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <h3 style="color: white; margin: 0;">{trade['الرمز']}</h3>
+                            <p style="color: #9ca3af; font-size: 13px; margin: 0;">{trade['الشركة']}</p>
                         </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top:5px;">
-                            <span style="color:#4ade80;">الهدف: <b>{row['الهدف']}</b></span>
-                            <span style="color:#f87171;">الوقف: <b>{row['الوقف']}</b></span>
+                        <span style="background: #1e293b; color: #60a5fa; padding: 4px 10px; border-radius: 8px; font-size: 10px; font-weight: bold;">
+                            {trade['الحالة']}
+                        </span>
+                    </div>
+                    <div style="margin: 15px 0; font-size: 12px; color: #fbbf24;">
+                        القوة: {'⭐' * trade['القوة']}
+                    </div>
+                    <div style="background: #0d1117; padding: 10px; border-radius: 10px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span>الدخول: <b>{trade['الدخول']}</b></span>
+                            <span style="color: #4ade80;">الهدف: <b>{trade['الهدف']}</b></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
+                            <span style="color: #f87171;">الوقف: <b>{trade['الوقف']}</b></span>
+                            <span style="color: white;">السعر الآن: <b>{trade['الحالي']}</b></span>
                         </div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
-            if row['الحالة'] == "نشط":
-                st.progress(progress / 100, text=f"التقدم نحو الهدف: {progress}%")
-else:
-    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+            if trade['الحالة'] == "نشط":
+                st.progress(progress / 100, text=f"نسبة الإنجاز: {progress}%")
 
-# --- 7. التذييل ---
-st.markdown(f"""
-    <div class="footer">
-        <p>جميع الحقوق محفوظة © 2026 منصة الحبي للتداول</p>
-        <p style="opacity: 0.6;">تنبيه: التداول ينطوي على مخاطر عالية، وهذه البيانات للأغراض التعليمية فقط.</p>
+# --- 7. التذييل (Footer) ---
+st.markdown("""
+    <div style="text-align: center; margin-top: 50px; padding: 20px; border-top: 1px solid #1f2937;">
+        <p style="color: #4b5563; font-size: 11px;">
+            جميع الحقوق محفوظة © 2026 منصة الحبي للتداول<br>
+            إخلاء مسؤولية: التداول ينطوي على مخاطرة، وهذه المنصة تعليمية ولا تقدم نصائح استثمارية.
+        </p>
     </div>
-""", unsafe_allow_html=True)
-
-# تحديث تلقائي بسيط
-if st.button("تحديث يدوي للبيانات"):
-    st.rerun()
+    """, unsafe_allow_html=True)
