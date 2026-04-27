@@ -1,1047 +1,798 @@
-"""
-app_1.py — منصة الحبي للتداول  v5
-جميع الملاحظات مطبّقة
-"""
-import streamlit as st
-import pandas as pd
-from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-import engine as E
-
-st.set_page_config(
-    page_title="منصة الحبي للتداول",
-    page_icon="ح",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-# ══════════════════════════════════════════════════════
-#  SESSION STATE
-# ══════════════════════════════════════════════════════
-for k,v in {
-    "theme":"dark","market_tab":"US","radar_df":None,
-    "radar_ts":None,"drill":None,"search_q":"",
-    "sort_by":"القوة","filter_grade":"جميع القوة","view_mode":"جدول",
-    "us_wl":"تقنية كبرى (30)",
-}.items():
-    if k not in st.session_state: st.session_state[k]=v
-
-DARK = st.session_state.theme == "dark"
-
-# ══════════════════════════════════════════════════════
-#  WATCHLISTS
-# ══════════════════════════════════════════════════════
-SA_STOCKS = [
-    ("2222","أرامكو"),("1120","الراجحي"),("2010","سابك"),("7010","STC"),
-    ("1180","الأهلي"),("1211","معادن"),("2350","سافكو"),("4190","جرير"),
-    ("2380","بترو رابغ"),("4003","التعاونية"),("2030","بنك الجزيرة"),
-    ("1150","الأول"),("1060","بنك الرياض"),("2280","شركة المراعي"),
-    ("4321","بوان"),
-]
-SA_WATCHLIST = [(t,"2222.SR") for t,_ in SA_STOCKS]
-
-TECH_30  = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","AMD","QCOM",
-            "ORCL","CRM","ADBE","INTC","TXN","MU","AMAT","LRCX","KLAC","MRVL",
-            "NFLX","PYPL","SHOP","SNOW","PANW","CRWD","ZS","DDOG","MSTR","PLTR"]
-BLUE_40  = ["JPM","BAC","GS","MS","BRK-B","V","MA","AXP","WFC","C",
-            "JNJ","UNH","LLY","ABBV","PFE","MRK","TMO","ABT","DHR","BMY",
-            "WMT","HD","COST","TGT","MCD","SBUX","NKE","LOW","TJX","AMGN",
-            "XOM","CVX","COP","SLB","CAT","RTX","HON","UPS","BA","GE"]
-# الأسهم الرخيصة: فقط الاتجاه الصاعد (Long only)
-CHEAP_20 = ["F","AAL","SOFI","RIVN","SNAP","UBER","LYFT","PLUG","NIO",
-            "XPEV","CLNE","NOK","BB","SIRI","VALE","ITUB","PBR","KGC","BTG","LCID"]
-
-US_WATCHLIST_MAP = {
-    "تقنية كبرى (30)":  [(t,"QQQ") for t in TECH_30],
-    "قيادية S&P (40)":  [(t,"SPY") for t in BLUE_40],
-    "الكل (70 سهم)":    [(t,"QQQ") for t in TECH_30]+[(t,"SPY") for t in BLUE_40],
-    "رخيصة (<$20) — صاعد فقط": [(t,"SPY") for t in CHEAP_20],
-    "كريبتو ETF":        [(t,"QQQ") for t in ["MSTR","COIN","BITO","GBTC","ETHE","ARKK","BLOK","BTCW"]],
-}
-CHEAP_KEY = "رخيصة (<$20) — صاعد فقط"
-
-# ══════════════════════════════════════════════════════
-#  TOKENS
-# ══════════════════════════════════════════════════════
-if DARK:
-    BG="#0B0D16"; CARD="#11141F"; CARD2="#171B2A"; BRD="#1C2136"
-    TXT="#E2E8F5"; TXT2="#8896B2"; TXT3="#3A4560"
-    TBLH="#0B0D16"; TBLHV="#171B2A"
-    HDR_BG="#0E1120"; STS_BG="#0E1120"
-else:
-    BG="#F1F4FA"; CARD="#FFFFFF"; CARD2="#F7F9FF"; BRD="#E2E8F0"
-    TXT="#0F1629"; TXT2="#4A5680"; TXT3="#9AA3BA"
-    TBLH="#F7F9FF"; TBLHV="#EEF2FA"
-    HDR_BG="#FFFFFF"; STS_BG="#F7F9FF"
-
-BL="#3B82F6"; GR="#10B981"; RD="#EF4444"; AM="#F59E0B"
-GR2="#22C55E"; RD2="#F87171"; AM2="#FCD34D"
-GL  = "#052E1C" if DARK else "#DCFCE7"
-RL  = "#2D0A0A" if DARK else "#FEE2E2"
-BLL = "#0F1E4A" if DARK else "#DBEAFE"
-AL  = "#2D1A00" if DARK else "#FEF9C3"
-
-# ══════════════════════════════════════════════════════
-#  CSS
-# ══════════════════════════════════════════════════════
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap');
-:root{{
-  --bg:{BG};--card:{CARD};--card2:{CARD2};--brd:{BRD};
-  --txt:{TXT};--txt2:{TXT2};--txt3:{TXT3};
-  --tblh:{TBLH};--tblhv:{TBLHV};
-  --bl:{BL};--gr:{GR};--rd:{RD};--am:{AM};
-  --font:'Tajawal',sans-serif;
-  --sh:0 1px 3px rgba(0,0,0,{"0.45" if DARK else "0.07"});
-  --sh2:0 4px 16px rgba(0,0,0,{"0.55" if DARK else "0.09"});
-}}
-html,body,[class*="css"]{{
-  background:var(--bg)!important;
-  font-family:var(--font)!important;
-  color:var(--txt)!important;
-  direction:rtl!important;
-}}
-*{{box-sizing:border-box;}}
-[data-testid="collapsedControl"],[data-testid="stSidebar"],
-section[data-testid="stSidebar"]{{display:none!important;}}
-.main .block-container{{padding:0!important;max-width:100%!important;}}
-::-webkit-scrollbar{{width:4px;height:4px;}}
-::-webkit-scrollbar-thumb{{background:var(--brd);border-radius:4px;}}
-
-/* ── HEADER ── */
-.top-hdr{{
-  background:{HDR_BG};
-  padding:0 clamp(14px,3vw,36px);
-  height:62px;
-  display:flex;align-items:center;justify-content:space-between;
-  border-bottom:1px solid var(--brd);
-  position:sticky;top:0;z-index:100;
-}}
-.hdr-brand{{display:flex;align-items:center;gap:12px;}}
-.brand-logo{{
-  width:42px;height:42px;background:var(--bl);border-radius:12px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:1.2rem;font-weight:900;color:#fff;flex-shrink:0;
-  box-shadow:0 4px 12px rgba(59,130,246,0.4);
-}}
-.brand-name{{
-  font-size:clamp(1.1rem,2.5vw,1.5rem);
-  font-weight:900;color:var(--txt);line-height:1.1;
-}}
-.brand-sub{{font-size:0.7rem;color:var(--txt3);letter-spacing:0.3px;margin-top:1px;}}
-.hdr-controls{{
-  display:flex;align-items:center;gap:8px;
-}}
-.hdr-clock{{
-  font-size:1.05rem;font-weight:800;
-  color:var(--bl);letter-spacing:2px;
-  font-variant-numeric:tabular-nums;
-  padding:0 6px;
-}}
-.hdr-icon-btn{{
-  width:36px;height:36px;border-radius:10px;
-  background:var(--card2);border:1px solid var(--brd);
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;font-size:1.05rem;transition:all .15s;
-  flex-shrink:0;
-}}
-.hdr-icon-btn:hover{{background:var(--brd);border-color:var(--bl);}}
-.hdr-icon-btn.active{{background:rgba(59,130,246,.15);border-color:var(--bl);}}
-
-/* ── MARKET TABS — خط فقط ── */
-.mkt-tabs{{
-  background:{HDR_BG};
-  padding:0 clamp(14px,3vw,36px);
-  border-bottom:2px solid var(--brd);
-  display:flex;align-items:flex-end;gap:4px;
-}}
-.mkt-tab{{
-  padding:11px 20px 9px;
-  font-size:0.95rem;font-weight:700;
-  color:var(--txt3);cursor:pointer;
-  border-bottom:3px solid transparent;
-  margin-bottom:-2px;
-  transition:all .18s;white-space:nowrap;
-  display:flex;align-items:center;gap:6px;
-}}
-.mkt-tab .mkt-tag{{
-  font-size:0.62rem;font-weight:800;
-  padding:1px 5px;border-radius:4px;
-  background:var(--brd);color:var(--txt3);
-}}
-.mkt-tab.active{{color:var(--bl);border-bottom-color:var(--bl);}}
-.mkt-tab.active .mkt-tag{{background:rgba(59,130,246,.18);color:var(--bl);}}
-.mkt-tab:hover:not(.active){{color:var(--txt2);}}
-
-/* ── STATUS BAR ── */
-.sts-bar{{
-  background:{STS_BG};
-  padding:7px clamp(14px,3vw,36px);
-  display:flex;align-items:center;justify-content:space-between;
-  flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--brd);
-  font-size:0.82rem;
-}}
-.sts-l{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}}
-.sts-r{{display:flex;align-items:center;gap:14px;color:var(--txt3);font-size:0.76rem;}}
-.mkt-status{{display:flex;align-items:center;gap:7px;font-weight:700;}}
-.mkt-status.open{{color:{GR2};}}
-.mkt-status.closed{{color:{RD};}}
-.sts-dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0;}}
-.sts-dot.open{{background:{GR2};animation:pg 1.8s infinite;}}
-.sts-dot.closed{{background:{RD};animation:pr 1.8s infinite;}}
-@keyframes pg{{0%,100%{{box-shadow:0 0 0 0 rgba(34,197,94,.5)}}50%{{box-shadow:0 0 0 5px rgba(34,197,94,0)}}}}
-@keyframes pr{{0%,100%{{box-shadow:0 0 0 0 rgba(239,68,68,.5)}}50%{{box-shadow:0 0 0 5px rgba(239,68,68,0)}}}}
-.sts-next{{color:{RD2};font-weight:700;}}
-.sts-prog{{height:4px;background:var(--brd);border-radius:2px;overflow:hidden;width:80px;}}
-.sts-prog-fill{{height:100%;background:linear-gradient(90deg,{BL},{GR2});animation:prog 5s linear infinite;border-radius:2px;}}
-@keyframes prog{{0%{{width:5%}}100%{{width:100%}}}}
-
-/* ── MAIN WRAP ── */
-.main-wrap{{padding:clamp(14px,2.5vw,24px) clamp(14px,3vw,36px);max-width:1500px;margin:0 auto;}}
-
-/* ── CONTROLS ROW ── */
-.ctrl-area{{margin-bottom:clamp(12px,2vw,18px);}}
-
-/* ── STAT CARDS ── */
-.stats-row{{
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:clamp(8px,1.5vw,12px);margin-bottom:clamp(14px,2.5vw,20px);
-}}
-@media(max-width:600px){{.stats-row{{grid-template-columns:repeat(2,1fr);}}}}
-.stat-card{{
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:14px;padding:clamp(12px,2vw,18px);
-  text-align:center;box-shadow:var(--sh);
-}}
-.stat-lbl{{font-size:0.78rem;color:var(--txt3);margin-bottom:6px;}}
-.stat-v{{font-size:clamp(1.6rem,3.5vw,2.2rem);font-weight:900;line-height:1;}}
-.sv-wh{{color:var(--txt);}} .sv-gr{{color:{GR2};}} .sv-am{{color:{AM2};}} .sv-bl{{color:{BL};}}
-
-/* ── TABLE ── */
-.tbl-wrap{{
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:14px;overflow:hidden;box-shadow:var(--sh);
-}}
-/* الجدول الفعلي يعرض عبر st.dataframe */
-/* لكن الرأس نبنيه بـ HTML */
-.tbl-hdr-row{{
-  display:grid;
-  grid-template-columns:50px 80px 110px 90px 70px 110px 110px 110px 110px 100px 100px 90px;
-  padding:8px clamp(8px,1.5vw,16px);
-  border-bottom:1px solid var(--brd);
-  background:var(--tblh);
-}}
-.tbl-row-item{{
-  display:grid;
-  grid-template-columns:50px 80px 110px 90px 70px 110px 110px 110px 110px 100px 100px 90px;
-  padding:0 clamp(8px,1.5vw,16px);
-  border-bottom:1px solid var(--brd);
-  align-items:center;min-height:58px;
-  transition:background .14s;
-}}
-.tbl-row-item:last-child{{border-bottom:none;}}
-.tbl-row-item:hover{{background:var(--tblhv);}}
-.th{{
-  font-size:0.72rem;font-weight:700;color:var(--txt3);
-  text-align:right;padding:2px 6px;
-  letter-spacing:0.5px;
-}}
-.td{{font-size:0.92rem;text-align:right;padding:2px 6px;}}
-.td.bold{{font-weight:800;color:var(--txt);font-size:1rem;}}
-.td.num{{font-variant-numeric:tabular-nums;}}
-.td.c-gr{{color:{GR2};font-weight:700;}}
-.td.c-rd{{color:{RD2};font-weight:700;}}
-.td.c-am{{color:{AM2};font-weight:700;}}
-.td.c-bl{{color:{BL};font-weight:700;}}
-.td.muted{{color:var(--txt3);}}
-
-/* Stars */
-.stars-row{{display:flex;gap:3px;justify-content:flex-end;}}
-.star-on{{color:{AM2};font-size:1.05rem;}}
-.star-off{{color:var(--brd);font-size:1.05rem;}}
-
-/* Status badge */
-.sb{{display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;white-space:nowrap;}}
-.sb-active{{background:rgba(34,197,94,.15);color:{GR2};border:1px solid rgba(34,197,94,.3);}}
-.sb-wait  {{background:rgba(245,158,11,.15);color:{AM2};border:1px solid rgba(245,158,11,.3);}}
-.sb-closed{{background:rgba(148,163,184,.1);color:var(--txt3);border:1px solid var(--brd);}}
-
-/* Grade pill */
-.gp{{display:inline-flex;align-items:center;font-size:0.72rem;font-weight:700;letter-spacing:1px;padding:3px 10px;border-radius:20px;}}
-.gp-ap{{background:{GL};color:{"#4ADE80" if DARK else "#15803D"};}}
-.gp-a {{background:{BLL};color:{"#93C5FD" if DARK else "#1D4ED8"};}}
-.gp-b {{background:{AL};color:{"#FCD34D" if DARK else "#854D0E"};}}
-.gp-sk{{background:var(--card2);color:var(--txt3);}}
-
-/* ── CARD VIEW ── */
-.cards-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;}}
-.trade-card{{
-  background:var(--card);border:1px solid var(--brd);border-radius:14px;
-  padding:18px;box-shadow:var(--sh);transition:box-shadow .2s,transform .18s;
-  position:relative;overflow:hidden;
-}}
-.trade-card:hover{{box-shadow:var(--sh2);transform:translateY(-2px);}}
-.trade-card::before{{
-  content:'';position:absolute;top:0;right:0;
-  width:100%;height:3px;border-radius:14px 14px 0 0;
-}}
-.tc-long::before {{background:linear-gradient(90deg,{GR2},{BL});}}
-.tc-short::before{{background:linear-gradient(90deg,{RD},{AM});}}
-.card-top{{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}}
-.card-sym{{font-size:1.15rem;font-weight:900;color:var(--txt);}}
-.card-name{{font-size:0.73rem;color:var(--txt3);margin-top:2px;}}
-.card-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}}
-.cf-l{{font-size:0.72rem;color:var(--txt3);margin-bottom:1px;}}
-.cf-v{{font-size:0.92rem;font-weight:700;}}
-.card-bot{{margin-top:12px;padding-top:10px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center;}}
-.card-date{{font-size:0.7rem;color:var(--txt3);}}
-
-/* ── DETAIL PANEL ── */
-.detail-wrap{{
-  background:var(--card);border:1px solid var(--brd);
-  border-radius:14px;padding:clamp(14px,2vw,22px);
-  box-shadow:var(--sh);margin-top:18px;
-}}
-.detail-top{{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}}
-.detail-sym{{font-size:1.3rem;font-weight:900;color:var(--bl);}}
-.levels-g{{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-top:12px;}}
-.lev-card{{background:var(--card2);border:1px solid var(--brd);border-radius:10px;padding:10px 13px;}}
-.lev-lbl{{font-size:0.65rem;color:var(--txt3);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;}}
-.lev-v{{font-size:1rem;font-weight:800;}}
-.lev-entry{{color:{BL};}} .lev-sl{{color:{RD};}} .lev-tp{{color:{GR};}} .lev-ext{{color:{AM};}}
-.lev-sub{{font-size:0.67rem;color:var(--txt3);margin-top:2px;}}
-
-/* ── FRESHNESS ── */
-.f-ok {{background:{"#052E1C" if DARK else "#ECFDF5"};border:1px solid {"#166534" if DARK else "#A7F3D0"};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{"#4ADE80" if DARK else "#059669"};margin-bottom:12px;}}
-.f-warn{{background:{AL};border:1px solid {AM};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{AM};margin-bottom:12px;}}
-.f-exp {{background:{RL};border:1px solid {"#7F1D1D" if DARK else "#FECACA"};border-radius:10px;padding:8px 14px;font-size:0.8rem;color:{"#F87171" if DARK else "#DC2626"};margin-bottom:12px;}}
-
-/* ── EMPTY ── */
-.empty{{text-align:center;padding:60px 20px;}}
-.empty-i{{font-size:2.8rem;opacity:.4;display:block;margin-bottom:12px;}}
-.empty-t{{font-size:1.05rem;font-weight:700;color:var(--txt3);margin-bottom:6px;}}
-.empty-s{{font-size:0.85rem;color:var(--txt3);opacity:.7;}}
-
-/* ── FOOTER ── */
-.habbi-footer{{
-  background:{"#0A0C14" if DARK else "#0F172A"};
-  padding:22px clamp(14px,3vw,36px);
-  border-top:1px solid rgba(59,130,246,.2);
-  margin-top:36px;
-}}
-.ft-top{{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;}}
-.ft-brand{{font-size:1.1rem;font-weight:800;color:#fff;}}
-.ft-contact{{
-  display:flex;align-items:center;gap:8px;
-  background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.35);
-  border-radius:20px;padding:6px 16px;font-size:0.82rem;color:#93C5FD;
-  text-decoration:none;transition:background .15s;
-}}
-.ft-contact:hover{{background:rgba(59,130,246,.25);}}
-.ft-links{{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;}}
-.ft-link{{font-size:0.78rem;color:rgba(255,255,255,.45);text-decoration:none;}}
-.ft-link:hover{{color:rgba(255,255,255,.75);text-decoration:underline;}}
-.ft-disc{{
-  font-size:0.75rem;color:rgba(255,255,255,.35);
-  text-align:center;line-height:1.6;
-}}
-.ft-disc-bar{{
-  background:#000;padding:8px 16px;
-  border-radius:6px;margin-top:10px;
-  font-size:0.72rem;color:rgba(255,255,255,.55);text-align:center;
-}}
-
-/* Streamlit overrides */
-div[data-testid="stProgressBar"]>div>div{{background:linear-gradient(90deg,#1D4ED8,#22C55E)!important;border-radius:3px!important;}}
-div[data-testid="stProgressBar"]>div{{background:var(--brd)!important;border-radius:3px!important;}}
-div[data-testid="stSuccess"]{{background:{"#052E1C" if DARK else "#F0FDF4"}!important;border:1px solid {"#166534" if DARK else "#A7F3D0"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
-div[data-testid="stError"]  {{background:{"#2D0A0A" if DARK else "#FEF2F2"}!important;border:1px solid {"#7F1D1D" if DARK else "#FECACA"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
-div[data-testid="stWarning"]{{background:{"#1F1300" if DARK else "#FFFBEB"}!important;border:1px solid {"#78350F" if DARK else "#FDE68A"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
-div[data-testid="stInfo"]   {{background:{"#0F1E4A" if DARK else "#EFF6FF"}!important;border:1px solid {"#1E3A8A" if DARK else "#BFDBFE"}!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;}}
-.stButton>button{{font-family:var(--font)!important;font-size:0.9rem!important;font-weight:700!important;border-radius:10px!important;padding:10px 20px!important;transition:all .18s!important;border:none!important;min-height:42px!important;}}
-.stButton>button[kind="primary"]{{background:linear-gradient(135deg,#1D4ED8,#7C3AED)!important;color:#fff!important;box-shadow:0 4px 14px rgba(29,78,216,.4)!important;}}
-.stButton>button[kind="primary"]:hover{{transform:translateY(-1px)!important;}}
-.stButton>button:not([kind="primary"]){{background:var(--card2)!important;color:var(--txt2)!important;border:1px solid var(--brd)!important;}}
-div[data-baseweb="select"]>div{{background:var(--card)!important;border:1px solid var(--brd)!important;border-radius:10px!important;font-family:var(--font)!important;font-size:0.88rem!important;color:var(--txt)!important;min-height:40px!important;}}
-div[data-baseweb="select"]>div:focus-within{{border-color:var(--bl)!important;box-shadow:0 0 0 3px rgba(59,130,246,.15)!important;}}
-div[data-baseweb="input"]>div{{background:var(--card)!important;border:1px solid var(--brd)!important;border-radius:10px!important;font-family:var(--font)!important;color:var(--txt)!important;min-height:40px!important;}}
-.stSelectbox label,.stTextInput label,.stMultiSelect label,.stRadio label{{font-family:var(--font)!important;font-size:0.8rem!important;font-weight:600!important;color:var(--txt3)!important;}}
-hr{{border:none!important;border-top:1px solid var(--brd)!important;margin:6px 0!important;}}
-</style>
-""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  CACHED ENGINE
-# ══════════════════════════════════════════════════════
-@st.cache_data(ttl=300, show_spinner=False)
-def _run(ticker, smt):
-    return E.run_engine(ticker, smt)
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _row(ticker, smt):
-    try:
-        res = E.run_engine(ticker, smt)
-        row = E.extract_row(res[0], ticker, smt)
-        # سجّل السعر الحالي
-        try: row["_cur"] = float(res[1]["Close"].iloc[-1])
-        except: row["_cur"] = None
-        return row
-    except Exception:
-        r = E.extract_row(None, ticker, smt)
-        r["_cur"] = None
-        return r
-
-
-# ══════════════════════════════════════════════════════
-#  HELPERS
-# ══════════════════════════════════════════════════════
-def _age_h(ts):
-    if ts is None: return 9999
-    u = ts.astimezone(timezone.utc) if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc)-u).total_seconds()/3600
-
-def _is_exp(ts, h=24): return _age_h(ts)>=h
-def _rr(v):
-    try: return float(str(v).replace("1:",""))
-    except: return 0.0
-
-def _stars(grade):
-    n={"A+":3,"A":3,"B":2,"C":1}.get(grade,0)
-    return "".join(
-        [f'<span class="star-on">★</span>' if i<n
-         else f'<span class="star-off">☆</span>' for i in range(3)])
-
-def _sbadge(grade):
-    if grade in ("A+","A"): return '<span class="sb sb-active">نشط</span>'
-    if grade=="B":           return '<span class="sb sb-wait">منتظر</span>'
-    return                          '<span class="sb sb-closed">مغلق</span>'
-
-def _gpill(g):
-    c={"A+":"gp-ap","A":"gp-a","B":"gp-b"}.get(g,"gp-sk")
-    return f'<span class="gp {c}">{g}</span>'
-
-def _sa_name(ticker):
-    m={t:n for t,n in SA_STOCKS}
-    return m.get(ticker,ticker)
-
-
-# ══════════════════════════════════════════════════════
-#  MARKET STATUS  — ساعات صحيحة
-# ══════════════════════════════════════════════════════
-def _us_market():
-    try:
-        import pytz; now=datetime.now(pytz.timezone("US/Eastern"))
-    except: now=datetime.now(timezone.utc)-timedelta(hours=4)
-    wd=now.weekday(); h,m,s=now.hour,now.minute,now.second
-    is_open=wd<5 and (h,m)>=(9,30) and (h,m)<(16,0)
-    def secs(hh,mm): return hh*3600+mm*60
-    ns=secs(h,m)+s
-    if is_open:
-        rem=max(secs(16,0)-ns,0); hh2,r=divmod(rem,3600); mm2,ss2=divmod(r,60)
-        return True, f"يغلق بعد: {hh2:02d}:{mm2:02d}:{ss2:02d}"
-    # حساب الوقت حتى فتح السوق بدقة
-    if wd<5 and (h,m)<(9,30):
-        nxt=secs(9,30)-ns
-    else:
-        # أيام حتى الإثنين
-        days_ahead=(7-wd)%7
-        if days_ahead==0: days_ahead=7
-        nxt=days_ahead*86400+secs(9,30)-ns%86400
-    nxt=max(int(nxt),1); hh2,r=divmod(nxt,3600); mm2,ss2=divmod(r,60)
-    # عرض بساعات ودقائق فقط (ليس 108 ساعة!)
-    if hh2>=24:
-        days=hh2//24; hh2=hh2%24
-        return False, f"يفتح بعد: {days}ي {hh2}س {mm2}د"
-    return False, f"يفتح بعد: {hh2}س {mm2}د {ss2}ث"
-
-def _sa_market():
-    try:
-        import pytz; now=datetime.now(pytz.timezone("Asia/Riyadh"))
-    except: now=datetime.now(timezone.utc)+timedelta(hours=3)
-    wd=now.weekday(); h,m,s=now.hour,now.minute,now.second
-    # السوق السعودي: أحد(6)-خميس(3)، 10:00-15:00
-    sa_work=wd in (6,0,1,2,3)
-    is_open=sa_work and (h,m)>=(10,0) and (h,m)<(15,0)
-    def secs(hh,mm): return hh*3600+mm*60
-    ns=secs(h,m)+s
-    if is_open:
-        rem=max(secs(15,0)-ns,0); hh2,r=divmod(rem,3600); mm2,ss2=divmod(r,60)
-        return True, f"يغلق بعد: {hh2:02d}:{mm2:02d}:{ss2:02d}"
-    # حساب الوقت حتى الفتح
-    if sa_work and (h,m)<(10,0):
-        nxt=secs(10,0)-ns
-    else:
-        # أيام حتى الأحد القادم
-        # wd: 0=Mon,1=Tue,2=Wed,3=Thu,4=Fri,5=Sat,6=Sun
-        if wd==3 and (h,m)>=(15,0): days_ahead=3   # خميس بعد الإغلاق → أحد
-        elif wd==4: days_ahead=2  # جمعة
-        elif wd==5: days_ahead=1  # سبت
-        else: days_ahead=1
-        nxt=days_ahead*86400+secs(10,0)-ns%86400
-    nxt=max(int(nxt),1); hh2,r=divmod(nxt,3600); mm2,ss2=divmod(r,60)
-    if hh2>=24:
-        days=hh2//24; hh2=hh2%24
-        return False, f"يفتح بعد: {days}ي {hh2}س {mm2}د"
-    return False, f"يفتح بعد: {hh2}س {mm2}د"
-
-
-# ══════════════════════════════════════════════════════
-#  HEADER
-# ══════════════════════════════════════════════════════
-def render_header():
-    now_s = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    theme_ico = "☀️" if DARK else "🌙"
-
-    st.markdown(f"""
-<div class="top-hdr">
-  <div class="hdr-brand">
-    <div class="brand-logo">ح</div>
-    <div>
-      <div class="brand-name">منصة الحبي للتداول</div>
-      <div class="brand-sub">تداول ذكي • تحليل متقدم</div>
-    </div>
-  </div>
-  <div class="hdr-controls">
-    <div class="hdr-icon-btn" title="🔕 تنبيهات">🔔</div>
-    <div class="hdr-icon-btn" title="🔊 صوت">🔊</div>
-    <div class="hdr-clock" id="hdr-clk">{now_s}</div>
-  </div>
-</div>
-<script>
-(function(){{
-  function tick(){{
-    var d=new Date();
-    var el=document.getElementById('hdr-clk');
-    if(el){{
-      var h=String(d.getUTCHours()).padStart(2,'0');
-      var m=String(d.getUTCMinutes()).padStart(2,'0');
-      var s=String(d.getUTCSeconds()).padStart(2,'0');
-      el.textContent=h+':'+m+':'+s;
-    }}
-  }}
-  setInterval(tick,1000);
-}})();
-</script>""", unsafe_allow_html=True)
-
-    # زر تبديل الثيم — في نفس الصف
-    _, tc = st.columns([11, 1])
-    with tc:
-        if st.button(theme_ico, use_container_width=True, key="theme_btn"):
-            st.session_state.theme = "light" if DARK else "dark"
-            st.rerun()
-
-
-# ══════════════════════════════════════════════════════
-#  MARKET TABS
-# ══════════════════════════════════════════════════════
-def render_tabs():
-    t = st.session_state.market_tab
-    sa_cls = "mkt-tab active" if t=="SA" else "mkt-tab"
-    us_cls = "mkt-tab active" if t=="US" else "mkt-tab"
-
-    st.markdown(f"""
-<div class="mkt-tabs">
-  <span class="{sa_cls}">
-    <span class="mkt-tag">SA</span>السوق السعودي
-  </span>
-  <span class="{us_cls}">
-    <span class="mkt-tag">US</span>السوق الأمريكي
-  </span>
-</div>""", unsafe_allow_html=True)
-
-    c1, c2, _ = st.columns([1,1,10])
-    with c1:
-        if st.button("🇸🇦 سعودي", use_container_width=True,
-                     type="primary" if t=="SA" else "secondary", key="btn_sa"):
-            st.session_state.market_tab="SA"
-            st.session_state.radar_df=None
-            st.session_state.radar_ts=None
-            st.rerun()
-    with c2:
-        if st.button("🇺🇸 أمريكي", use_container_width=True,
-                     type="primary" if t=="US" else "secondary", key="btn_us"):
-            st.session_state.market_tab="US"
-            st.session_state.radar_df=None
-            st.session_state.radar_ts=None
-            st.rerun()
-
-
-# ══════════════════════════════════════════════════════
-#  STATUS BAR
-# ══════════════════════════════════════════════════════
-def render_status(ts):
-    mkt=st.session_state.market_tab
-    is_open, cd_str = _sa_market() if mkt=="SA" else _us_market()
-    dot="open" if is_open else "closed"
-    stxt="السوق مفتوح" if is_open else "السوق مغلق"
-    scls="open" if is_open else "closed"
-    ts_str=ts.astimezone(timezone.utc).strftime("%H:%M:%S") if ts else "--:--:--"
-
-    st.markdown(f"""
-<div class="sts-bar">
-  <div class="sts-l">
-    <div class="mkt-status {scls}">
-      <div class="sts-dot {dot}"></div>{stxt}
-    </div>
-    <span class="sts-next">{cd_str}</span>
-    <div class="sts-prog"><div class="sts-prog-fill"></div></div>
-  </div>
-  <div class="sts-r">
-    <span>آخر تحديث: {ts_str}</span>
-    <span>التحديث كل 5 دقائق</span>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  STAT CARDS — تظهر فقط عند وجود بيانات كاملة
-#  لا تظهر عند البحث عن رمز واحد
-# ══════════════════════════════════════════════════════
-def render_stat_cards(df, search_active=False):
-    if df is None or df.empty or search_active:
-        return   # ← لا تعرض البطاقات عند البحث
-    total  = len(df)
-    active = len(df[df["Grade"].isin(["A+","A"])])
-    wait   = len(df[df["Grade"]=="B"])
-    skip   = len(df[df["Grade"].isin(["SKIP","C","ERR","TIMEOUT"])])
-    st.markdown(f"""
-<div class="stats-row">
-  <div class="stat-card"><div class="stat-lbl">إجمالي الصفقات</div><div class="stat-v sv-wh">{total}</div></div>
-  <div class="stat-card"><div class="stat-lbl">صفقات نشطة</div><div class="stat-v sv-gr">{active}</div></div>
-  <div class="stat-card"><div class="stat-lbl">صفقات منتظرة</div><div class="stat-v sv-am">{wait}</div></div>
-  <div class="stat-card"><div class="stat-lbl">غير مؤهلة</div><div class="stat-v sv-wh">{skip}</div></div>
-</div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  CONTROLS ROW
-# ══════════════════════════════════════════════════════
-def render_controls():
-    c1,c2,c3,c4,c5 = st.columns([2,1.4,1.4,1.2,1.1])
-    with c1:
-        s=st.text_input("بحث","",placeholder="ابحث بالرمز…",
-                         label_visibility="collapsed",key="srch_inp")
-        st.session_state.search_q=s.strip().upper()
-    with c2:
-        GO=["جميع القوة","A+ ذهبي فقط","A+ و A (ممتاز)","B فأعلى"]
-        gf=st.selectbox("قوة",GO,index=GO.index(st.session_state.filter_grade)
-                         if st.session_state.filter_grade in GO else 0,
-                         label_visibility="collapsed",key="gf_dd")
-        st.session_state.filter_grade=gf
-    with c3:
-        SO=["ترتيب بالقوة","ترتيب بـ R:R","ترتيب بالرمز"]
-        sv=st.selectbox("ترتيب",SO,index=SO.index(st.session_state.sort_by)
-                         if st.session_state.sort_by in SO else 0,
-                         label_visibility="collapsed",key="sort_dd")
-        st.session_state.sort_by=sv
-    with c4:
-        scan=st.button("📡 مسح الرادار",type="primary",
-                        use_container_width=True,key="scan_main")
-    with c5:
-        if st.button("🔄 تحديث",use_container_width=True,key="ref_main"):
-            _run.clear(); _row.clear()
-            st.session_state.radar_df=None
-            st.session_state.radar_ts=None
-            st.rerun()
-
-    # عرض + قائمة US
-    vc1,vc2,_ = st.columns([1.5,2,8])
-    with vc1:
-        vm=st.radio("عرض",["جدول","بطاقات"],
-                     index=["جدول","بطاقات"].index(st.session_state.view_mode),
-                     horizontal=True,label_visibility="collapsed",key="vm_r")
-        st.session_state.view_mode=vm
-    with vc2:
-        if st.session_state.market_tab=="US":
-            us_k=st.selectbox("قائمة",list(US_WATCHLIST_MAP.keys()),
-                               index=list(US_WATCHLIST_MAP.keys()).index(
-                                   st.session_state.us_wl)
-                               if st.session_state.us_wl in US_WATCHLIST_MAP else 0,
-                               label_visibility="collapsed",key="us_wl_dd")
-            st.session_state.us_wl=us_k
-
-    return scan
-
-
-# ══════════════════════════════════════════════════════
-#  SCAN
-# ══════════════════════════════════════════════════════
-def do_scan(watchlist, cheap_mode=False):
-    E.SWEEP_WICK_MIN=8.0
-    total,results=len(watchlist),[]
-    pb=st.progress(0,text="جارٍ المسح…")
-    done=0
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futs={pool.submit(_row,p[0],p[1]):p for p in watchlist}
-        for fut in as_completed(futs):
-            tkr,smt=futs[fut]
-            try: r=fut.result(timeout=25)
-            except TimeoutError:
-                r=E.extract_row(None,tkr,smt); r["Grade"]="TIMEOUT"; r["_cur"]=None
-            # الأسهم الرخيصة: نفلتر Long فقط
-            if cheap_mode and r.get("Bias","")=="Short":
-                r["Grade"]="SKIP"; r["_grade_rank"]=99; r["_score_num"]=0
-            r["_scan_date"]=datetime.now().strftime("%Y-%m-%d")
-            results.append(r); done+=1
-            g=r.get("Grade","?"); sym={"A+":"⭐","A":"✅","B":"⚠️"}.get(g,"·")
-            pb.progress(done/total,text=f"مسح {done}/{total} · {tkr} {sym}")
-    pb.empty()
-    df=(pd.DataFrame(results)
-          .sort_values(by=["_grade_rank","_score_num"],ascending=[True,False])
-          .reset_index(drop=True))
-    st.session_state.radar_df=df
-    st.session_state.radar_ts=datetime.now(timezone.utc)
-    n_ap=len(df[df["Grade"]=="A+"]); n_a=len(df[df["Grade"]=="A"]); n_b=len(df[df["Grade"]=="B"])
-    st.success(f"✅ اكتمل المسح · {len(df)} رمزاً · A+: {n_ap} · A: {n_a} · B: {n_b}")
-
-
-# ══════════════════════════════════════════════════════
-#  FILTER
-# ══════════════════════════════════════════════════════
-def apply_filters(df):
-    if df is None or df.empty: return pd.DataFrame()
-    if _is_exp(st.session_state.radar_ts,24): return pd.DataFrame()
-    d=df.copy()
-    q=st.session_state.search_q
-    if q: d=d[d["Ticker"].str.contains(q,na=False)]
-    gf=st.session_state.filter_grade
-    if gf=="A+ ذهبي فقط":      d=d[d["Grade"]=="A+"]
-    elif gf=="A+ و A (ممتاز)":  d=d[d["Grade"].isin(["A+","A"])]
-    elif gf=="B فأعلى":          d=d[d["Grade"].isin(["A+","A","B"])]
-    sv=st.session_state.sort_by
-    if sv=="ترتيب بـ R:R":
-        d["_rr_n"]=d["Best R:R"].apply(_rr); d=d.sort_values("_rr_n",ascending=False)
-    elif sv=="ترتيب بالرمز": d=d.sort_values("Ticker")
-    return d.reset_index(drop=True)
-
-
-# ══════════════════════════════════════════════════════
-#  TABLE VIEW
-# ══════════════════════════════════════════════════════
-def render_table(df, sa_mode=False):
-    if df is None or df.empty:
-        st.markdown('<div class="empty"><span class="empty-i">📭</span>'
-                    '<div class="empty-t">لا توجد صفقات مطابقة</div>'
-                    '<div class="empty-s">ابدأ مسح الرادار أو عدّل الفلاتر</div></div>',
-                    unsafe_allow_html=True)
-        return
-
-    # رأس الجدول
-    html = '<div class="tbl-wrap">'
-    html += ('<div class="tbl-hdr-row">'
-             '<div class="th">#</div>'
-             '<div class="th">الرمز</div>'
-             '<div class="th">الاسم</div>'
-             '<div class="th">التاريخ</div>'
-             '<div class="th">الحالة</div>'
-             '<div class="th">القوة</div>'
-             '<div class="th">نقطة الدخول</div>'
-             '<div class="th">السعر الحالي</div>'
-             '<div class="th">وقف الخسارة</div>'
-             '<div class="th">هدف 1</div>'
-             '<div class="th">الموجة الكاملة</div>'
-             '<div class="th">نوع السيولة</div>'
-             '</div>')
-
-    for idx, row in df.iterrows():
-        row_num  = idx+1
-        ticker   = str(row.get("Ticker","?"))
-        grade    = str(row.get("Grade","?"))
-        score    = str(row.get("Score","—"))
-        bias     = str(row.get("Bias","—"))
-        entry    = row.get("Entry","—")
-        sl       = row.get("SL","—")
-        tp1      = row.get("TP1","—")
-        # الموجة الكاملة
-        wave     = row.get("Wave Target","—")
-        if wave in (None,"","—",0,0.0): wave = row.get("TP2 (Ext)","—")
-        liq      = str(row.get("نوع السيولة","—"))
-        cur      = row.get("_cur",None)
-        scan_dt  = row.get("_scan_date",datetime.now().strftime("%Y-%m-%d"))
-
-        name = _sa_name(ticker) if sa_mode else ticker
-        cur_str  = f"{cur:.3f}" if cur else str(entry)
-        # الأسهم الرخيصة: الموجة غير موجودة في engine بشكل مختلف — نعرض "—" إذا فارغة
-        if wave in (None,"","—","0","0.0",0,0.0): wave="—"
-
-        try:
-            e_f=float(str(entry)); c_f=float(str(cur or entry))
-            pnl=(c_f-e_f)/e_f*100 if bias=="Long" else (e_f-c_f)/e_f*100
-            cur_cls="c-gr" if pnl>=0 else "c-rd"
-        except:
-            cur_cls="muted"
-
-        stars_h = f'<div class="stars-row">{_stars(grade)}</div>'
-        badge_h = _sbadge(grade)
-        bias_cls = "c-gr" if bias=="Long" else "c-rd"
-
-        html += (f'<div class="tbl-row-item">'
-                 f'<div class="td muted">{row_num}</div>'
-                 f'<div class="td bold">{ticker}</div>'
-                 f'<div class="td">{name}</div>'
-                 f'<div class="td muted">{scan_dt}</div>'
-                 f'<div class="td">{badge_h}</div>'
-                 f'<div class="td">{stars_h}</div>'
-                 f'<div class="td num {bias_cls}">{entry}</div>'
-                 f'<div class="td num {cur_cls}">{cur_str}</div>'
-                 f'<div class="td num c-rd">{sl}</div>'
-                 f'<div class="td num c-gr">{tp1}</div>'
-                 f'<div class="td num c-am">{wave}</div>'
-                 f'<div class="td muted" style="font-size:.82rem;">{liq}</div>'
-                 f'</div>')
-
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  CARD VIEW
-# ══════════════════════════════════════════════════════
-def render_cards(df, sa_mode=False):
-    if df is None or df.empty:
-        st.markdown('<div class="empty"><span class="empty-i">📭</span>'
-                    '<div class="empty-t">لا توجد صفقات</div></div>',
-                    unsafe_allow_html=True)
-        return
-
-    html = '<div class="cards-grid">'
-    for _, row in df.iterrows():
-        ticker = str(row.get("Ticker","?"))
-        grade  = str(row.get("Grade","?"))
-        bias   = str(row.get("Bias","—"))
-        entry  = row.get("Entry","—")
-        sl     = row.get("SL","—")
-        tp1    = row.get("TP1","—")
-        wave   = row.get("Wave Target","—")
-        if wave in (None,"","—","0","0.0",0,0.0): wave=row.get("TP2 (Ext)","—")
-        if wave in (None,"","—","0","0.0",0,0.0): wave="—"
-        rr     = row.get("Best R:R","—")
-        liq    = str(row.get("نوع السيولة","—"))
-        mss    = str(row.get("MSS","—"))
-        scan_dt= row.get("_scan_date",datetime.now().strftime("%Y-%m-%d"))
-        name   = _sa_name(ticker) if sa_mode else ticker
-
-        bc     = "tc-long" if bias=="Long" else "tc-short"
-        bias_ar= "شراء ▲" if bias=="Long" else "بيع ▼"
-        bias_c = GR2 if bias=="Long" else RD2
-        stars_h= f'<div class="stars-row">{_stars(grade)}</div>'
-        badge_h= _sbadge(grade)
-        pill_h = _gpill(grade)
-
-        html += (f'<div class="trade-card {bc}">'
-                 f'<div class="card-top">'
-                 f'<div><div class="card-sym">{ticker}</div>'
-                 f'<div class="card-name">{name}</div></div>'
-                 f'<div style="text-align:left;">{pill_h}<div style="margin-top:4px;">{stars_h}</div></div>'
-                 f'</div>'
-                 f'<div class="card-grid">'
-                 f'<div><div class="cf-l">الاتجاه</div>'
-                 f'<div class="cf-v" style="color:{bias_c}">{bias_ar}</div></div>'
-                 f'<div><div class="cf-l">نقطة الدخول</div>'
-                 f'<div class="cf-v">{entry}</div></div>'
-                 f'<div><div class="cf-l">وقف الخسارة</div>'
-                 f'<div class="cf-v" style="color:{RD2}">{sl}</div></div>'
-                 f'<div><div class="cf-l">هدف 1</div>'
-                 f'<div class="cf-v" style="color:{GR}">{tp1}</div></div>'
-                 f'<div><div class="cf-l">الموجة الكاملة</div>'
-                 f'<div class="cf-v" style="color:{AM}">{wave}</div></div>'
-                 f'<div><div class="cf-l">أفضل R:R</div>'
-                 f'<div class="cf-v">{rr}</div></div>'
-                 f'<div><div class="cf-l">نوع السيولة</div>'
-                 f'<div class="cf-v" style="font-size:.82rem">{liq}</div></div>'
-                 f'<div><div class="cf-l">MSS</div>'
-                 f'<div class="cf-v" style="font-size:.82rem">{mss}</div></div>'
-                 f'</div>'
-                 f'<div class="card-bot">'
-                 f'<span class="card-date">📅 {scan_dt}</span>{badge_h}'
-                 f'</div></div>')
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  DETAIL PANEL
-# ══════════════════════════════════════════════════════
-def render_detail(df, watchlist):
-    if df is None or df.empty: return
-    tickers=df["Ticker"].tolist()
-    if not tickers: return
-
-    dc1,dc2,_ = st.columns([2,1,9])
-    with dc1:
-        sel=st.selectbox("🔬 اختر الرمز للتحليل",tickers,
-                          key="drill_sel",label_visibility="visible")
-    with dc2:
-        st.markdown("<br>",unsafe_allow_html=True)
-        load=st.button("تحميل الشارت",use_container_width=True,key="drill_load")
-
-    if load and sel: st.session_state.drill=sel
-
-    if st.session_state.drill and st.session_state.drill in tickers:
-        tkr=st.session_state.drill
-        smt_p=next((s for t,s in watchlist if t==tkr),"QQQ")
-        row=df[df["Ticker"]==tkr]
-        grade=row["Grade"].values[0] if not row.empty else "—"
-
-        with st.spinner(f"تحميل {tkr}…"):
-            try:
-                res=_run(tkr,smt_p)
-                setup,df_d,df_h1,df_m15,liq_lvls,sw_d,dol=res
-                cur=float(df_d["Close"].iloc[-1])
-            except Exception as ex:
-                st.error(f"خطأ: {ex}"); return
-
-        if setup:
-            # Panel
-            wave_str=f"{setup.wave_target:.4f}" if setup.wave_target else "—"
-            tp_cards=""
-            for t in setup.targets[:4]:
-                cls="lev-ext" if t.kind in ("ext_liq","ext_ext") else "lev-tp"
-                lbl=t.label[:22] if len(t.label)>22 else t.label
-                tp_cards+=(f'<div class="lev-card">'
-                           f'<div class="lev-lbl">{lbl}</div>'
-                           f'<div class="lev-v {cls}">{t.price:.4f}</div>'
-                           f'<div class="lev-sub">R:R {t.rr:.1f}x</div></div>')
-
-            st.markdown(f"""
-<div class="detail-wrap">
-  <div class="detail-top">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span class="detail-sym">{tkr}</span>
-      {_gpill(grade)}
-      <span style="font-size:.82rem;color:{TXT3};">نوع السيولة: {setup.liquidity_type}</span>
-    </div>
-  </div>
-  <div class="levels-g">
-    <div class="lev-card">
-      <div class="lev-lbl">نقطة الدخول</div>
-      <div class="lev-v lev-entry">{setup.entry:.4f}</div>
-      <div class="lev-sub">50% EQ · IFVG</div>
-    </div>
-    <div class="lev-card">
-      <div class="lev-lbl">وقف الخسارة</div>
-      <div class="lev-v lev-sl">{setup.stop_loss:.4f}</div>
-    </div>
-    {tp_cards}
-    <div class="lev-card">
-      <div class="lev-lbl">🎯 الموجة الكاملة</div>
-      <div class="lev-v lev-ext">{wave_str}</div>
-      <div class="lev-sub">External Liquidity</div>
-    </div>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-        cc,lc = st.columns([2.8,1],gap="medium")
-        with cc:
-            fig=E.build_chart(df_d,setup,liq_lvls,sw_d,dol,
-                               ticker=tkr,n_candles=80,htf_interval="1d")
-            st.plotly_chart(fig,use_container_width=True,
-                            config={"displayModeBar":True,"displaylogo":False,
-                                    "modeBarButtonsToRemove":["select2d","lasso2d"]})
-        with lc:
-            if setup:
-                st.markdown("**سجل القرار**")
-                for lg in setup.decision_log:
-                    ico="🟢" if lg.score_delta>0 else "🔴" if lg.score_delta<0 else "⚪"
-                    st.markdown(f"{ico} **{lg.stage}**  \n{lg.finding}  \n*{lg.score_delta:+d} نقطة*")
-                    st.markdown("---")
-
-
-# ══════════════════════════════════════════════════════
-#  FOOTER
-# ══════════════════════════════════════════════════════
-def render_footer():
-    st.markdown("""
-<div class="habbi-footer">
-  <div class="ft-top">
-    <div class="ft-brand">🦅 منصة الحبي للتداول</div>
-    <a href="mailto:support@alhabbi.com" class="ft-contact">
-      ✉️ &nbsp;تواصل مع الإدارة
-    </a>
-  </div>
-  <div class="ft-links">
-    <span class="ft-link">إخلاء المسؤولية واتفاقية الاستخدام</span>
-    <span style="color:rgba(255,255,255,.2)">•</span>
-    <span class="ft-link">سياسة الخصوصية</span>
-    <span style="color:rgba(255,255,255,.2)">•</span>
-    <span class="ft-link">منصة تعليمية – ليست نصيحة مالية</span>
-    <span style="color:rgba(255,255,255,.2)">•</span>
-    <span style="font-size:.78rem;color:rgba(255,255,255,.4);">© 2026</span>
-  </div>
-  <div class="ft-disc-bar">
-    جميع البيانات لأغراض تثقيفية وتعليمية فقط وليست توصية مالية.
-    التداول ينطوي على مخاطر عالية. استخدامك للمنصة يعني موافقتك على
-    <span style="text-decoration:underline;cursor:pointer;">إخلاء المسؤولية</span>.
-  </div>
-</div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════
-#  MAIN
-# ══════════════════════════════════════════════════════
-def main():
-    render_header()
-    render_tabs()
-
-    mkt=st.session_state.market_tab
-
-    # تحديد القائمة
-    if mkt=="SA":
-        watchlist=SA_WATCHLIST; sa_mode=True; cheap_mode=False
-    else:
-        wl_key=st.session_state.us_wl
-        watchlist=US_WATCHLIST_MAP.get(wl_key,US_WATCHLIST_MAP["تقنية كبرى (30)"])
-        sa_mode=False
-        cheap_mode=(wl_key==CHEAP_KEY)
-
-    render_status(st.session_state.radar_ts)
-
-    st.markdown('<div class="main-wrap">', unsafe_allow_html=True)
-
-    scan=render_controls()
-
-    if scan:
-        do_scan(watchlist, cheap_mode=cheap_mode)
-
-    # Freshness
-    ts=st.session_state.radar_ts; df=st.session_state.radar_df
-    search_active = bool(st.session_state.search_q.strip())
-
-    if ts is not None:
-        h=_age_h(ts)
-        if h>=24:
-            st.markdown('<div class="f-exp">⏰ البيانات انتهت صلاحيتها (أكثر من 24 ساعة) — يُرجى إعادة المسح.</div>',
-                        unsafe_allow_html=True)
-            df=None
-        elif h>=12:
-            st.markdown(f'<div class="f-warn">⚠️ البيانات عمرها {h:.0f} ساعة — يُنصح بالتحديث.</div>',
-                        unsafe_allow_html=True)
-        else:
-            ts_s=ts.astimezone(timezone.utc).strftime("%H:%M UTC")
-            st.markdown(f'<div class="f-ok">✅ بيانات حية · آخر مسح: {ts_s} (منذ {h:.1f} ساعة)</div>',
-                        unsafe_allow_html=True)
-
-    # بطاقات الإحصاء — لا تظهر عند البحث
-    render_stat_cards(df, search_active=search_active)
-
-    # فلترة
-    filtered=apply_filters(df) if df is not None else None
-
-    if st.session_state.view_mode=="جدول":
-        render_table(filtered, sa_mode=sa_mode)
-    else:
-        render_cards(filtered, sa_mode=sa_mode)
-
-    # تفاصيل
-    if filtered is not None and not filtered.empty:
-        st.markdown("<br>",unsafe_allow_html=True)
-        render_detail(filtered, watchlist)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-    render_footer()
-
-
-if __name__=="__main__":
-    main()
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © الحبي - Al-Habibi ICT Analyzer
+// Version: 2.0.0 - Full ICT Suite
+
+//@version=5
+indicator("الحبي - Al-Habibi ICT v2", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  إعدادات اللغة / Language Settings
+// ══════════════════════════════════════════════════════════════════════════════
+string langChoice = input.string("عربي", title="اللغة / Language", options=["عربي", "English"], group="⚙️ عام / General")
+bool isArabic = langChoice == "عربي"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  إعدادات عامة / General Settings
+// ══════════════════════════════════════════════════════════════════════════════
+int swingLen       = input.int(3, title="طول السوينج / Swing Length", minval=1, maxval=10, group="⚙️ عام / General")
+int maxPat         = input.int(50, title="أقصى عدد نماذج / Max Patterns", minval=10, maxval=200, group="⚙️ عام / General")
+float dispThresh   = input.float(1.5, title="عتبة الاندفاع / Displacement Threshold", minval=1.0, maxval=5.0, step=0.1, group="⚙️ عام / General")
+int pdLookback     = input.int(50, title="فترة Premium/Discount", minval=20, maxval=200, group="⚙️ عام / General")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  إعدادات العرض / Display Toggles
+// ══════════════════════════════════════════════════════════════════════════════
+bool showFVG       = input.bool(true, title="FVG", group="📊 نماذج / Patterns")
+bool showInvFVG    = input.bool(true, title="Inversion FVG", group="📊 نماذج / Patterns")
+bool showOB        = input.bool(true, title="Order Blocks", group="📊 نماذج / Patterns")
+bool showMSS       = input.bool(true, title="MSS", group="📊 نماذج / Patterns")
+bool showBOS       = input.bool(true, title="BOS", group="📊 نماذج / Patterns")
+bool showBPR       = input.bool(true, title="BPR", group="📊 نماذج / Patterns")
+bool showRejBlock  = input.bool(true, title="Rejection Block", group="📊 نماذج / Patterns")
+bool showVoids     = input.bool(true, title="Liquidity Voids", group="📊 نماذج / Patterns")
+bool showBreakers  = input.bool(true, title="Breakers", group="📊 نماذج / Patterns")
+bool showMitBlock  = input.bool(true, title="Mitigation Block", group="📊 نماذج / Patterns")
+bool showDisp      = input.bool(true, title="Displacement", group="📊 نماذج / Patterns")
+bool showCISD      = input.bool(true, title="CISD", group="📊 نماذج / Patterns")
+bool showMeasGap   = input.bool(true, title="Measuring Gap", group="📊 نماذج / Patterns")
+bool showLiq       = input.bool(true, title="السيولة / Liquidity", group="💧 سيولة / Liquidity")
+bool showKZ        = input.bool(true, title="Kill Zones", group="⏰ وقت / Time")
+bool showMacro     = input.bool(true, title="Macro Windows", group="⏰ وقت / Time")
+bool showNWOG      = input.bool(true, title="NWOG / NDOG", group="⏰ وقت / Time")
+bool showPD        = input.bool(true, title="Premium/Discount", group="📈 تحليل / Analysis")
+bool showFib       = input.bool(true, title="فيبوناتشي / Fibonacci", group="📈 تحليل / Analysis")
+bool showProtected = input.bool(true, title="Protected High/Low", group="📈 تحليل / Analysis")
+bool showDash      = input.bool(true, title="الجدول / Dashboard", group="📋 جدول / Dashboard")
+string dashPos     = input.string("top_right", title="موقع الجدول / Position", options=["top_right", "top_left", "bottom_right", "bottom_left"], group="📋 جدول / Dashboard")
+bool fridayFilter  = input.bool(true, title="فلتر الجمعة / Friday Filter", group="🔍 فلاتر / Filters")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  الألوان / Colors
+// ══════════════════════════════════════════════════════════════════════════════
+color cBullFVG   = input.color(color.new(#00E676, 80), title="FVG صاعد", group="🎨 ألوان / Colors")
+color cBearFVG   = input.color(color.new(#FF5252, 80), title="FVG هابط", group="🎨 ألوان / Colors")
+color cBullOB    = input.color(color.new(#2196F3, 80), title="OB صاعد", group="🎨 ألوان / Colors")
+color cBearOB    = input.color(color.new(#FF9800, 80), title="OB هابط", group="🎨 ألوان / Colors")
+color cMSS       = input.color(color.new(#E040FB, 0), title="MSS", group="🎨 ألوان / Colors")
+color cBOS       = input.color(color.new(#00BCD4, 0), title="BOS", group="🎨 ألوان / Colors")
+color cBPR       = input.color(color.new(#9C27B0, 80), title="BPR", group="🎨 ألوان / Colors")
+color cVoid      = input.color(color.new(#FF6D00, 80), title="Void", group="🎨 ألوان / Colors")
+color cBreaker   = input.color(color.new(#F50057, 80), title="Breaker", group="🎨 ألوان / Colors")
+color cKZAsia    = input.color(color.new(#FFD600, 92), title="آسيا", group="🎨 ألوان / Colors")
+color cKZLondon  = input.color(color.new(#2979FF, 92), title="لندن", group="🎨 ألوان / Colors")
+color cKZNY      = input.color(color.new(#00E676, 92), title="نيويورك", group="🎨 ألوان / Colors")
+color cKZLC      = input.color(color.new(#FF6D00, 92), title="لندن إغلاق", group="🎨 ألوان / Colors")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  دوال مساعدة / Helpers
+// ══════════════════════════════════════════════════════════════════════════════
+f_t(string ar, string en) => isArabic ? ar : en
+
+float atrVal = ta.atr(14)
+
+nyH(int t) => hour(t, "America/New_York")
+nyM(int t) => minute(t, "America/New_York")
+nyD(int t) => dayofweek(t, "America/New_York")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  1. Swing Detection
+// ══════════════════════════════════════════════════════════════════════════════
+float pivH = ta.pivothigh(high, swingLen, swingLen)
+float pivL = ta.pivotlow(low, swingLen, swingLen)
+bool isSH = not na(pivH)
+bool isSL = not na(pivL)
+
+var float lastSH = na
+var float lastSL = na
+var int lastSHBar = na
+var int lastSLBar = na
+
+if isSH
+    lastSH := pivH
+    lastSHBar := bar_index - swingLen
+if isSL
+    lastSL := pivL
+    lastSLBar := bar_index - swingLen
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  2. Trend Detection
+// ══════════════════════════════════════════════════════════════════════════════
+var int trend = 0
+var float tSH = na
+var float tSL = na
+
+if isSH
+    if not na(tSH) and pivH > tSH
+        trend := 1
+    tSH := pivH
+if isSL
+    if not na(tSL) and pivL < tSL
+        trend := -1
+    tSL := pivL
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  3. Displacement Detection
+// ══════════════════════════════════════════════════════════════════════════════
+float bodySize = math.abs(close - open)
+float upWick = high - math.max(close, open)
+float dnWick = math.min(close, open) - low
+bool isDisp = bodySize > (atrVal * dispThresh)
+bool dispCandle = isDisp and bodySize > upWick * 2 and bodySize > dnWick * 2
+string dispDir = close > open ? "bull" : "bear"
+
+if dispCandle and showDisp
+    color dc = dispDir == "bull" ? color.new(#00E676, 0) : color.new(#FF5252, 0)
+    label.new(bar_index, dispDir == "bull" ? low : high, "⚡", color=color.new(color.white, 100), textcolor=dc, style=dispDir == "bull" ? label.style_label_up : label.style_label_down, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  4. MSS & BOS Detection
+// ══════════════════════════════════════════════════════════════════════════════
+var bool mssNow = false
+var bool bosNow = false
+var float mssLvl = na
+var float bosLvl = na
+var int mssBI = na
+var int bosBI = na
+var string mssD = na
+var string bosD = na
+
+bool bullBrk = not na(lastSH) and close > lastSH and close[1] <= lastSH
+bool bearBrk = not na(lastSL) and close < lastSL and close[1] >= lastSL
+
+mssNow := false
+bosNow := false
+
+if bullBrk
+    if trend == -1 and isDisp
+        mssNow := true
+        mssLvl := lastSH
+        mssBI := bar_index
+        mssD := "bull"
+        trend := 1
+    else if trend == 1
+        bosNow := true
+        bosLvl := lastSH
+        bosBI := bar_index
+        bosD := "bull"
+
+if bearBrk
+    if trend == 1 and isDisp
+        mssNow := true
+        mssLvl := lastSL
+        mssBI := bar_index
+        mssD := "bear"
+        trend := -1
+    else if trend == -1
+        bosNow := true
+        bosLvl := lastSL
+        bosBI := bar_index
+        bosD := "bear"
+
+if mssNow and showMSS
+    line.new(mssBI - 10, mssLvl, mssBI, mssLvl, color=cMSS, width=3)
+    label.new(mssBI, mssLvl, f_t("⚡ تحول", "⚡ MSS"), color=cMSS, textcolor=color.white, style=mssD == "bull" ? label.style_label_up : label.style_label_down, size=size.small)
+
+if bosNow and showBOS
+    line.new(bosBI - 10, bosLvl, bosBI, bosLvl, color=cBOS, width=2, style=line.style_dashed)
+    label.new(bosBI, bosLvl, f_t("كسر", "BOS"), color=cBOS, textcolor=color.white, style=bosD == "bull" ? label.style_label_up : label.style_label_down, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  5. FVG Detection (BISI / SIBI)
+// ══════════════════════════════════════════════════════════════════════════════
+bool bullFVG = low > high[2] and close[1] > open[1]
+bool bearFVG = high < low[2] and close[1] < open[1]
+
+var float fvgBT = na
+var float fvgBB = na
+var float fvgST = na
+var float fvgSB = na
+var bool fvgBA = false
+var bool fvgSA = false
+var int fvgCnt = 0
+
+if bullFVG and showFVG and fvgCnt < maxPat
+    fvgBA := true
+    fvgBT := low
+    fvgBB := high[2]
+    fvgCnt += 1
+    box.new(bar_index - 2, low, bar_index + 10, high[2], bgcolor=cBullFVG, border_color=color.new(#00E676, 50))
+    // CE line (50%)
+    float ce = (low + high[2]) / 2
+    line.new(bar_index - 2, ce, bar_index + 10, ce, color=color.new(#00E676, 60), style=line.style_dotted, width=1)
+    label.new(bar_index - 1, ce, f_t("BISI", "BISI"), color=color.new(color.green, 90), textcolor=color.green, style=label.style_label_center, size=size.tiny)
+
+if bearFVG and showFVG and fvgCnt < maxPat
+    fvgSA := true
+    fvgST := low[2]
+    fvgSB := high
+    fvgCnt += 1
+    box.new(bar_index - 2, low[2], bar_index + 10, high, bgcolor=cBearFVG, border_color=color.new(#FF5252, 50))
+    float ce = (low[2] + high) / 2
+    line.new(bar_index - 2, ce, bar_index + 10, ce, color=color.new(#FF5252, 60), style=line.style_dotted, width=1)
+    label.new(bar_index - 1, ce, f_t("SIBI", "SIBI"), color=color.new(color.red, 90), textcolor=color.red, style=label.style_label_center, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  6. Inversion FVG
+// ══════════════════════════════════════════════════════════════════════════════
+// عندما يتم كسر FVG كانت تدعم الشراء وتتحول لمقاومة (أو العكس)
+bool invFVGBull = false
+bool invFVGBear = false
+
+if fvgBA and close < fvgBB and bodySize > atrVal * 0.5
+    invFVGBear := true
+    fvgBA := false
+    if showInvFVG
+        label.new(bar_index, high, f_t("انقلاب ↓", "Inv FVG ↓"), color=color.new(#FF1744, 0), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+if fvgSA and close > fvgST and bodySize > atrVal * 0.5
+    invFVGBull := true
+    fvgSA := false
+    if showInvFVG
+        label.new(bar_index, low, f_t("انقلاب ↑", "Inv FVG ↑"), color=color.new(#00E676, 0), textcolor=color.white, style=label.style_label_up, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  7. Order Blocks
+// ══════════════════════════════════════════════════════════════════════════════
+bool bullOB = close[1] < open[1] and close > open and close > high[1] and isDisp
+bool bearOB = close[1] > open[1] and close < open and close < low[1] and isDisp
+var int obCnt = 0
+
+if bullOB and showOB and obCnt < maxPat
+    obCnt += 1
+    box.new(bar_index - 1, high[1], bar_index + 15, low[1], bgcolor=cBullOB, border_color=color.new(#2196F3, 50))
+    // Mean Threshold (50%)
+    float mt = (high[1] + low[1]) / 2
+    line.new(bar_index - 1, mt, bar_index + 15, mt, color=color.new(#2196F3, 60), style=line.style_dotted)
+    label.new(bar_index - 1, low[1], f_t("OB ↑", "OB ↑"), color=color.new(color.blue, 80), textcolor=color.blue, style=label.style_label_up, size=size.tiny)
+
+if bearOB and showOB and obCnt < maxPat
+    obCnt += 1
+    box.new(bar_index - 1, high[1], bar_index + 15, low[1], bgcolor=cBearOB, border_color=color.new(#FF9800, 50))
+    float mt = (high[1] + low[1]) / 2
+    line.new(bar_index - 1, mt, bar_index + 15, mt, color=color.new(#FF9800, 60), style=line.style_dotted)
+    label.new(bar_index - 1, high[1], f_t("OB ↓", "OB ↓"), color=color.new(color.orange, 80), textcolor=color.orange, style=label.style_label_down, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  8. Rejection Block
+// ══════════════════════════════════════════════════════════════════════════════
+bool bullRej = dnWick > bodySize * 2 and isSL and showRejBlock
+bool bearRej = upWick > bodySize * 2 and isSH and showRejBlock
+var int rejCnt = 0
+
+if bullRej and rejCnt < maxPat
+    rejCnt += 1
+    box.new(bar_index, math.min(close, open), bar_index + 8, low, bgcolor=color.new(#00BFA5, 85), border_color=color.new(#00BFA5, 50))
+    label.new(bar_index, low, f_t("رفض ↑", "Rej ↑"), color=color.new(#00BFA5, 80), textcolor=#00BFA5, style=label.style_label_up, size=size.tiny)
+
+if bearRej and rejCnt < maxPat
+    rejCnt += 1
+    box.new(bar_index, high, bar_index + 8, math.max(close, open), bgcolor=color.new(#D50000, 85), border_color=color.new(#D50000, 50))
+    label.new(bar_index, high, f_t("رفض ↓", "Rej ↓"), color=color.new(#D50000, 80), textcolor=#D50000, style=label.style_label_down, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  9. BPR (Balanced Price Range)
+// ══════════════════════════════════════════════════════════════════════════════
+bool bprNow = false
+float bprT = na
+float bprB = na
+
+if bullFVG and bearFVG[1] and showBPR
+    float oT = math.min(low, low[3])
+    float oB = math.max(high[2], high[1])
+    if oT > oB
+        bprNow := true
+        bprT := oT
+        bprB := oB
+        box.new(bar_index - 2, oT, bar_index + 10, oB, bgcolor=cBPR, border_color=color.new(#9C27B0, 50), border_width=2)
+        label.new(bar_index - 1, (oT + oB) / 2, "BPR", color=color.new(#9C27B0, 80), textcolor=#9C27B0, style=label.style_label_center, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  10. Liquidity Voids
+// ══════════════════════════════════════════════════════════════════════════════
+bool bullVoid = low > high[1] and (low - high[1]) > atrVal * 2
+bool bearVoid = high < low[1] and (low[1] - high) > atrVal * 2
+var int vdCnt = 0
+
+if bullVoid and showVoids and vdCnt < maxPat
+    vdCnt += 1
+    box.new(bar_index - 1, low, bar_index + 10, high[1], bgcolor=cVoid, border_color=color.new(#FF6D00, 50), border_style=line.style_dotted)
+    label.new(bar_index, (low + high[1]) / 2, f_t("فراغ", "Void"), color=color.new(#FF6D00, 80), textcolor=#FF6D00, style=label.style_label_center, size=size.tiny)
+
+if bearVoid and showVoids and vdCnt < maxPat
+    vdCnt += 1
+    box.new(bar_index - 1, low[1], bar_index + 10, high, bgcolor=cVoid, border_color=color.new(#FF6D00, 50), border_style=line.style_dotted)
+    label.new(bar_index, (low[1] + high) / 2, f_t("فراغ", "Void"), color=color.new(#FF6D00, 80), textcolor=#FF6D00, style=label.style_label_center, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  11. Breakers
+// ══════════════════════════════════════════════════════════════════════════════
+bool bullBrker = bullOB[1] and close < low[2] and isDisp
+bool bearBrker = bearOB[1] and close > high[2] and isDisp
+var int brkCnt = 0
+
+if bullBrker and showBreakers and brkCnt < maxPat
+    brkCnt += 1
+    box.new(bar_index - 2, high[2], bar_index + 10, low[2], bgcolor=cBreaker, border_color=color.new(#F50057, 50))
+    label.new(bar_index - 1, (high[2] + low[2]) / 2, f_t("كسارة ↓", "Brk ↓"), color=color.new(#F50057, 80), textcolor=#F50057, style=label.style_label_center, size=size.tiny)
+
+if bearBrker and showBreakers and brkCnt < maxPat
+    brkCnt += 1
+    box.new(bar_index - 2, high[2], bar_index + 10, low[2], bgcolor=cBreaker, border_color=color.new(#F50057, 50))
+    label.new(bar_index - 1, (high[2] + low[2]) / 2, f_t("كسارة ↑", "Brk ↑"), color=color.new(#F50057, 80), textcolor=#F50057, style=label.style_label_center, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  12. Mitigation Block
+// ══════════════════════════════════════════════════════════════════════════════
+// OB تم لمسه جزئياً ثم ارتد السعر منه
+bool mitBull = bullOB[2] and low[1] <= (high[3] + low[3]) / 2 and close > close[1] and close > open
+bool mitBear = bearOB[2] and high[1] >= (high[3] + low[3]) / 2 and close < close[1] and close < open
+
+if mitBull and showMitBlock
+    label.new(bar_index, low, f_t("تخفيف ↑", "Mit ↑"), color=color.new(#7C4DFF, 0), textcolor=color.white, style=label.style_label_up, size=size.tiny)
+
+if mitBear and showMitBlock
+    label.new(bar_index, high, f_t("تخفيف ↓", "Mit ↓"), color=color.new(#7C4DFF, 0), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  13. CISD (Change in State of Delivery)
+// ══════════════════════════════════════════════════════════════════════════════
+var bool cisdNow = false
+cisdNow := false
+
+if trend == 1 and fvgBA and close < fvgBB and bodySize > atrVal * 0.5
+    cisdNow := true
+    if showCISD
+        label.new(bar_index, high, f_t("⚠ CISD", "⚠ CISD"), color=color.new(#FFD600, 0), textcolor=color.black, style=label.style_label_down, size=size.small)
+
+if trend == -1 and fvgSA and close > fvgST and bodySize > atrVal * 0.5
+    cisdNow := true
+    if showCISD
+        label.new(bar_index, low, f_t("⚠ CISD", "⚠ CISD"), color=color.new(#FFD600, 0), textcolor=color.black, style=label.style_label_up, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  14. Measuring Gap (فجوة القياس)
+// ══════════════════════════════════════════════════════════════════════════════
+// فجوة لا يتم لمسها وتدل على قوة الاتجاه
+bool measGapBull = bullFVG and bosNow and bosD == "bull"
+bool measGapBear = bearFVG and bosNow and bosD == "bear"
+
+if measGapBull and showMeasGap
+    label.new(bar_index - 1, (low + high[2]) / 2, f_t("قياس", "Meas"), color=color.new(#00E5FF, 0), textcolor=color.white, style=label.style_label_center, size=size.tiny)
+
+if measGapBear and showMeasGap
+    label.new(bar_index - 1, (low[2] + high) / 2, f_t("قياس", "Meas"), color=color.new(#00E5FF, 0), textcolor=color.white, style=label.style_label_center, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  15. Liquidity Models
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Equal Highs / Equal Lows ──
+float eqTh = atrVal * 0.1
+bool eqH = math.abs(high - high[1]) < eqTh and math.abs(high - high[2]) < eqTh
+bool eqL = math.abs(low - low[1]) < eqTh and math.abs(low - low[2]) < eqTh
+
+if eqH and showLiq
+    line.new(bar_index - 2, high, bar_index + 5, high, color=color.new(#FF5252, 30), width=2, style=line.style_dotted)
+    label.new(bar_index, high, f_t("EQH 🎯", "EQH 🎯"), color=color.new(color.red, 90), textcolor=color.red, style=label.style_label_down, size=size.tiny)
+
+if eqL and showLiq
+    line.new(bar_index - 2, low, bar_index + 5, low, color=color.new(#00E676, 30), width=2, style=line.style_dotted)
+    label.new(bar_index, low, f_t("EQL 🎯", "EQL 🎯"), color=color.new(color.green, 90), textcolor=color.green, style=label.style_label_up, size=size.tiny)
+
+// ── BSL / SSL ──
+bool bslSw = not na(lastSH) and high > lastSH and close < lastSH
+bool sslSw = not na(lastSL) and low < lastSL and close > lastSL
+
+if bslSw and showLiq
+    label.new(bar_index, high, f_t("BSL ✗", "BSL ✗"), color=color.new(color.red, 0), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+if sslSw and showLiq
+    label.new(bar_index, low, f_t("SSL ✗", "SSL ✗"), color=color.new(color.green, 0), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+// ── Stop Run ──
+bool srH = high > ta.highest(high, 20)[1] and close < open and close < high[1]
+bool srL = low < ta.lowest(low, 20)[1] and close > open and close > low[1]
+
+if srH and showLiq
+    label.new(bar_index, high, f_t("🛑 ستوب", "🛑 Stop"), color=color.new(#D50000, 0), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+if srL and showLiq
+    label.new(bar_index, low, f_t("🛑 ستوب", "🛑 Stop"), color=color.new(#00C853, 0), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+// ── Inducement ──
+bool idmH = not na(pivH) and high[1] > pivH and close[1] < pivH and close < close[1]
+bool idmL = not na(pivL) and low[1] < pivL and close[1] > pivL and close > close[1]
+
+if idmH and showLiq
+    label.new(bar_index - 1, high[1], "IDM", color=color.new(#FF6D00, 0), textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+if idmL and showLiq
+    label.new(bar_index - 1, low[1], "IDM", color=color.new(#FF6D00, 0), textcolor=color.white, style=label.style_label_up, size=size.tiny)
+
+// ── Judas Swing ──
+int curH = nyH(time)
+int curM = nyM(time)
+bool isLO = curH >= 2 and curH < 5
+bool judasBull = isLO and low < ta.lowest(low, 10)[1] and close > open and isDisp
+bool judasBear = isLO and high > ta.highest(high, 10)[1] and close < open and isDisp
+
+if judasBull and showLiq
+    label.new(bar_index, low, f_t("يهوذا ↑", "Judas ↑"), color=color.new(#00E676, 0), textcolor=color.white, style=label.style_label_up, size=size.small)
+
+if judasBear and showLiq
+    label.new(bar_index, high, f_t("يهوذا ↓", "Judas ↓"), color=color.new(#FF5252, 0), textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// ── Liquidity Sweep ──
+bool swpH = high > high[1] and high > high[2] and close < high[1] and close < open
+bool swpL = low < low[1] and low < low[2] and close > low[1] and close > open
+
+if swpH and showLiq
+    label.new(bar_index, high, f_t("سحب ↓", "Sweep ↓"), color=color.new(#FF1744, 80), textcolor=#FF1744, style=label.style_label_down, size=size.tiny)
+
+if swpL and showLiq
+    label.new(bar_index, low, f_t("سحب ↑", "Sweep ↑"), color=color.new(#00E676, 80), textcolor=#00E676, style=label.style_label_up, size=size.tiny)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  16. Kill Zones & Macro Windows
+// ══════════════════════════════════════════════════════════════════════════════
+bool inAsia   = curH >= 20 or curH < 0
+bool inLondon = curH >= 2 and curH < 5
+bool inNY     = (curH == 9 and curM >= 30) or (curH >= 10 and curH < 12)
+bool inLC     = curH >= 15 and curH < 17
+
+// Macro Windows
+bool mac1 = (curH == 9 and curM >= 50) or (curH == 10 and curM <= 10)
+bool mac2 = (curH == 11 and curM >= 50) or (curH == 12 and curM <= 10)
+bool mac3 = (curH == 13 and curM >= 50) or (curH == 14 and curM <= 10)
+
+bgcolor(showKZ and inAsia ? cKZAsia : na, title="Asia KZ")
+bgcolor(showKZ and inLondon ? cKZLondon : na, title="London KZ")
+bgcolor(showKZ and inNY ? cKZNY : na, title="NY KZ")
+bgcolor(showKZ and inLC ? cKZLC : na, title="LC KZ")
+bgcolor(showMacro and mac1 ? color.new(#E040FB, 93) : na, title="Macro 1")
+bgcolor(showMacro and mac2 ? color.new(#E040FB, 93) : na, title="Macro 2")
+bgcolor(showMacro and mac3 ? color.new(#E040FB, 93) : na, title="Macro 3")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  17. NWOG / NDOG (New Week/Day Opening Gap)
+// ══════════════════════════════════════════════════════════════════════════════
+var float ndogHigh = na
+var float ndogLow = na
+var float nwogHigh = na
+var float nwogLow = na
+var int prevDayBar = na
+
+bool newDay = ta.change(time("D")) != 0
+bool newWeek = ta.change(time("W")) != 0
+
+if newDay and showNWOG
+    ndogHigh := open
+    ndogLow := close[1]
+    if ndogHigh < ndogLow
+        float tmp = ndogHigh
+        ndogHigh := ndogLow
+        ndogLow := tmp
+    line.new(bar_index, ndogHigh, bar_index + 20, ndogHigh, color=color.new(#00BCD4, 50), style=line.style_dotted, width=1)
+    line.new(bar_index, ndogLow, bar_index + 20, ndogLow, color=color.new(#00BCD4, 50), style=line.style_dotted, width=1)
+    label.new(bar_index, (ndogHigh + ndogLow) / 2, "NDOG", color=color.new(#00BCD4, 80), textcolor=#00BCD4, style=label.style_label_center, size=size.tiny)
+
+if newWeek and showNWOG
+    nwogHigh := open
+    nwogLow := close[1]
+    if nwogHigh < nwogLow
+        float tmp2 = nwogHigh
+        nwogHigh := nwogLow
+        nwogLow := tmp2
+    line.new(bar_index, nwogHigh, bar_index + 50, nwogHigh, color=color.new(#FFD600, 40), style=line.style_dashed, width=2)
+    line.new(bar_index, nwogLow, bar_index + 50, nwogLow, color=color.new(#FFD600, 40), style=line.style_dashed, width=2)
+    label.new(bar_index, (nwogHigh + nwogLow) / 2, "NWOG", color=color.new(#FFD600, 80), textcolor=#FFD600, style=label.style_label_center, size=size.small)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  18. Premium / Discount
+// ══════════════════════════════════════════════════════════════════════════════
+float rH = ta.highest(high, pdLookback)
+float rL = ta.lowest(low, pdLookback)
+float rEQ = (rH + rL) / 2
+bool inPrem = close > rEQ
+bool inDisc = close < rEQ
+
+plot(showPD ? rEQ : na, title="Equilibrium", color=color.new(#FFD600, 50), linewidth=1, style=plot.style_stepline)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  19. Protected High / Low
+// ══════════════════════════════════════════════════════════════════════════════
+var float protH = na
+var float protL = na
+
+if trend == 1 and not na(lastSL)
+    protL := lastSL
+if trend == -1 and not na(lastSH)
+    protH := lastSH
+
+plot(showProtected and trend == 1 and not na(protL) ? protL : na, title="Protected Low", color=color.new(#00E676, 40), linewidth=2, style=plot.style_linebr)
+plot(showProtected and trend == -1 and not na(protH) ? protH : na, title="Protected High", color=color.new(#FF5252, 40), linewidth=2, style=plot.style_linebr)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  20. Fibonacci Standard Deviations
+// ══════════════════════════════════════════════════════════════════════════════
+float fibR = rH - rL
+float fib2   = trend == 1 ? rH + fibR * 2.0 : rL - fibR * 2.0
+float fib2_5 = trend == 1 ? rH + fibR * 2.5 : rL - fibR * 2.5
+float fib4   = trend == 1 ? rH + fibR * 4.0 : rL - fibR * 4.0
+
+plot(showFib ? fib2 : na, title="Fib -2.0", color=color.new(#00BCD4, 60), linewidth=1, style=plot.style_cross)
+plot(showFib ? fib2_5 : na, title="Fib -2.5", color=color.new(#7C4DFF, 60), linewidth=1, style=plot.style_cross)
+plot(showFib ? fib4 : na, title="Fib -4.0", color=color.new(#FF5252, 60), linewidth=1, style=plot.style_cross)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  21. HRLR / LRLR
+// ══════════════════════════════════════════════════════════════════════════════
+int swCnt = 0
+for i = 1 to 20
+    if not na(ta.pivothigh(high, 2, 2)[i]) or not na(ta.pivotlow(low, 2, 2)[i])
+        swCnt += 1
+
+bool isHRLR = swCnt > 10
+bool isLRLR = swCnt < 5
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  22. Day Type & Filters
+// ══════════════════════════════════════════════════════════════════════════════
+int dow = nyD(time)
+bool isFri = dow == dayofweek.friday
+bool friAfternoon = isFri and curH >= 12
+bool noTrade = fridayFilter and friAfternoon
+
+var string dayType = na
+bool lonLow = inLondon and low == ta.lowest(low, 20)
+bool nyUp   = inNY and close > open and close > close[1]
+bool revD   = (bslSw or sslSw) and mssNow
+bool consD  = not mssNow and not bosNow and not bslSw and not sslSw
+
+if lonLow and nyUp
+    dayType := f_t("يوم شراء كلاسيكي", "Classic Buy Day")
+else if revD
+    dayType := f_t("يوم انعكاس", "Reversal Day")
+else if consD
+    dayType := f_t("يوم تذبذب", "Consolidation")
+else
+    dayType := f_t("يوم اتجاه", "Trend Day")
+
+// Draw on Liquidity
+var string dolTxt = na
+if trend == 1
+    dolTxt := eqH ? f_t("قمم متساوية (EQH)", "Equal Highs (EQH)") : f_t("قمة أسبوعية سابقة", "Prev Weekly High")
+else if trend == -1
+    dolTxt := eqL ? f_t("قيعان متساوية (EQL)", "Equal Lows (EQL)") : f_t("قاع أسبوعي سابق", "Prev Weekly Low")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  23. Dashboard Table (الجدول التفاعلي)
+// ══════════════════════════════════════════════════════════════════════════════
+var table dash = na
+
+if showDash and barstate.islast
+    string tPos = switch dashPos
+        "top_right" => position.top_right
+        "top_left" => position.top_left
+        "bottom_right" => position.bottom_right
+        "bottom_left" => position.bottom_left
+        => position.top_right
+
+    dash := table.new(tPos, 4, 32, bgcolor=color.new(#0D0D1A, 5), border_color=color.new(#333366, 0), border_width=1, frame_color=color.new(#1A1A2E, 0), frame_width=2)
+
+    // Header
+    table.cell(dash, 0, 0, f_t("الحبي - محلل ICT v2", "Al-Habibi ICT v2"), text_color=#00E5FF, text_size=size.normal, bgcolor=color.new(#0D0D1A, 0), text_halign=text.align_center)
+    table.merge_cells(dash, 0, 0, 3, 0)
+
+    // Column headers
+    color hdrBg = color.new(#16213E, 0)
+    table.cell(dash, 0, 1, f_t("النموذج", "Pattern"), text_color=color.white, text_size=size.small, bgcolor=hdrBg)
+    table.cell(dash, 1, 1, f_t("الحالة", "Status"), text_color=color.white, text_size=size.small, bgcolor=hdrBg)
+    table.cell(dash, 2, 1, f_t("الاتجاه", "Dir"), text_color=color.white, text_size=size.small, bgcolor=hdrBg)
+    table.cell(dash, 3, 1, f_t("القيمة", "Value"), text_color=color.white, text_size=size.small, bgcolor=hdrBg)
+
+    // Helper colors
+    color bg1 = color.new(#0D0D1A, 0)
+    color bg2 = color.new(#16213E, 0)
+
+    // ── Row 2: Trend ──
+    string trTxt = trend == 1 ? f_t("صاعد ↑", "Bullish ↑") : trend == -1 ? f_t("هابط ↓", "Bearish ↓") : f_t("محايد", "Neutral")
+    color trC = trend == 1 ? color.green : trend == -1 ? color.red : color.gray
+    table.cell(dash, 0, 2, f_t("الاتجاه المؤسساتي", "Inst. Trend"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 2, "✓", text_color=trC, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 2, trTxt, text_color=trC, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 2, str.tostring(close, "#.####"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // ── Row 3: Premium/Discount ──
+    string pdT = inPrem ? f_t("علاوة (بيع)", "Premium") : f_t("خصم (شراء)", "Discount")
+    color pdC = inPrem ? color.red : color.green
+    table.cell(dash, 0, 3, f_t("المنطقة", "Zone"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 3, "✓", text_color=pdC, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 3, pdT, text_color=pdC, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 3, str.tostring(rEQ, "#.####"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // ── Row 4: Day Type ──
+    table.cell(dash, 0, 4, f_t("نوع اليوم", "Day Type"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 4, "✓", text_color=#FFD600, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 4, dayType, text_color=#FFD600, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 4, "", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // ── Separator: Structure ──
+    table.cell(dash, 0, 5, f_t("══ النماذج الهيكلية ══", "══ Structure ══"), text_color=#00E5FF, text_size=size.small, bgcolor=color.new(#1A1A2E, 0))
+    table.merge_cells(dash, 0, 5, 3, 5)
+
+    // Row 6: MSS
+    table.cell(dash, 0, 6, "MSS", text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 6, mssNow ? "✓" : "✗", text_color=mssNow ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 6, mssNow ? (mssD == "bull" ? "↑" : "↓") : "-", text_color=mssNow ? (mssD == "bull" ? color.green : color.red) : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 6, mssNow ? str.tostring(mssLvl, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 7: BOS
+    table.cell(dash, 0, 7, "BOS", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 7, bosNow ? "✓" : "✗", text_color=bosNow ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 7, bosNow ? (bosD == "bull" ? "↑" : "↓") : "-", text_color=bosNow ? (bosD == "bull" ? color.green : color.red) : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 7, bosNow ? str.tostring(bosLvl, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 8: FVG BISI
+    table.cell(dash, 0, 8, "FVG (BISI)", text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 8, bullFVG ? "✓" : "✗", text_color=bullFVG ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 8, bullFVG ? "↑" : "-", text_color=bullFVG ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 8, bullFVG ? str.tostring(fvgBT, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 9: FVG SIBI
+    table.cell(dash, 0, 9, "FVG (SIBI)", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 9, bearFVG ? "✓" : "✗", text_color=bearFVG ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 9, bearFVG ? "↓" : "-", text_color=bearFVG ? color.red : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 9, bearFVG ? str.tostring(fvgSB, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 10: Inversion FVG
+    table.cell(dash, 0, 10, f_t("انقلاب FVG", "Inv FVG"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 10, invFVGBull or invFVGBear ? "✓" : "✗", text_color=invFVGBull or invFVGBear ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 10, invFVGBull ? "↑" : invFVGBear ? "↓" : "-", text_color=invFVGBull ? color.green : invFVGBear ? color.red : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 10, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 11: OB
+    table.cell(dash, 0, 11, "Order Block", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 11, bullOB or bearOB ? "✓" : "✗", text_color=bullOB or bearOB ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 11, bullOB ? "↑" : bearOB ? "↓" : "-", text_color=bullOB ? color.green : bearOB ? color.red : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 11, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 12: BPR
+    table.cell(dash, 0, 12, "BPR", text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 12, bprNow ? "✓" : "✗", text_color=bprNow ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 12, bprNow ? "⬛" : "-", text_color=color.purple, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 12, bprNow ? str.tostring(bprT, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 13: Rejection Block
+    table.cell(dash, 0, 13, f_t("كتلة الرفض", "Rej Block"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 13, bullRej or bearRej ? "✓" : "✗", text_color=bullRej or bearRej ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 13, bullRej ? "↑" : bearRej ? "↓" : "-", text_color=bullRej ? color.green : bearRej ? color.red : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 13, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 14: Mitigation Block
+    table.cell(dash, 0, 14, f_t("تخفيف", "Mitigation"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 14, mitBull or mitBear ? "✓" : "✗", text_color=mitBull or mitBear ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 14, mitBull ? "↑" : mitBear ? "↓" : "-", text_color=mitBull ? color.green : mitBear ? color.red : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 14, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // ── Separator: Liquidity ──
+    table.cell(dash, 0, 15, f_t("══ نماذج السيولة ══", "══ Liquidity ══"), text_color=#FF5252, text_size=size.small, bgcolor=color.new(#1A1A2E, 0))
+    table.merge_cells(dash, 0, 15, 3, 15)
+
+    // Row 16: Void
+    table.cell(dash, 0, 16, f_t("فراغ سعري", "Void"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 16, bullVoid or bearVoid ? "✓" : "✗", text_color=bullVoid or bearVoid ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 16, bullVoid ? "↑" : bearVoid ? "↓" : "-", text_color=bullVoid ? color.green : bearVoid ? color.red : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 16, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 17: Breaker
+    table.cell(dash, 0, 17, f_t("كسارة", "Breaker"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 17, bullBrker or bearBrker ? "✓" : "✗", text_color=bullBrker or bearBrker ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 17, bullBrker ? "↓" : bearBrker ? "↑" : "-", text_color=bullBrker ? color.red : bearBrker ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 17, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 18: Displacement
+    table.cell(dash, 0, 18, f_t("اندفاع", "Displacement"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 18, dispCandle ? "✓" : "✗", text_color=dispCandle ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 18, dispCandle ? (dispDir == "bull" ? "↑" : "↓") : "-", text_color=dispCandle ? (dispDir == "bull" ? color.green : color.red) : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 18, dispCandle ? str.tostring(bodySize, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 19: CISD
+    table.cell(dash, 0, 19, "CISD", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 19, cisdNow ? "✓" : "✗", text_color=cisdNow ? #FFD600 : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 19, cisdNow ? "⚠" : "-", text_color=#FFD600, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 19, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 20: Measuring Gap
+    table.cell(dash, 0, 20, f_t("فجوة قياس", "Meas Gap"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 20, measGapBull or measGapBear ? "✓" : "✗", text_color=measGapBull or measGapBear ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 20, measGapBull ? "↑" : measGapBear ? "↓" : "-", text_color=measGapBull ? color.green : measGapBear ? color.red : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 20, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 21: EQH
+    table.cell(dash, 0, 21, "EQH", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 21, eqH ? "✓" : "✗", text_color=eqH ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 21, eqH ? "🎯" : "-", text_color=color.red, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 21, eqH ? str.tostring(high, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 22: EQL
+    table.cell(dash, 0, 22, "EQL", text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 22, eqL ? "✓" : "✗", text_color=eqL ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 22, eqL ? "🎯" : "-", text_color=color.green, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 22, eqL ? str.tostring(low, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 23: BSL/SSL
+    table.cell(dash, 0, 23, "BSL/SSL", text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 23, bslSw or sslSw ? "✓" : "✗", text_color=bslSw or sslSw ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 23, bslSw ? "BSL" : sslSw ? "SSL" : "-", text_color=bslSw ? color.red : sslSw ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 23, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 24: Stop Run
+    table.cell(dash, 0, 24, f_t("ضرب ستوب", "Stop Run"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 24, srH or srL ? "✓" : "✗", text_color=srH or srL ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 24, srH ? "↓" : srL ? "↑" : "-", text_color=srH ? color.red : srL ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 24, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 25: Judas
+    table.cell(dash, 0, 25, f_t("مصيدة يهوذا", "Judas Swing"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 25, judasBull or judasBear ? "✓" : "✗", text_color=judasBull or judasBear ? color.green : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 25, judasBull ? "↑" : judasBear ? "↓" : "-", text_color=judasBull ? color.green : judasBear ? color.red : color.gray, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 25, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 26: Inducement
+    table.cell(dash, 0, 26, f_t("استدراج", "Inducement"), text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 26, idmH or idmL ? "✓" : "✗", text_color=idmH or idmL ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 26, idmH ? "↓" : idmL ? "↑" : "-", text_color=idmH ? color.red : idmL ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 26, "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // ── Separator: Filters ──
+    table.cell(dash, 0, 27, f_t("══ الفلاتر والمخاطر ══", "══ Filters & Risk ══"), text_color=#FFD600, text_size=size.small, bgcolor=color.new(#1A1A2E, 0))
+    table.merge_cells(dash, 0, 27, 3, 27)
+
+    // Row 28: HRLR/LRLR
+    string lrT = isHRLR ? f_t("مقاومة عالية ⛔", "High Resist ⛔") : isLRLR ? f_t("مقاومة منخفضة ✅", "Low Resist ✅") : f_t("متوسط", "Medium")
+    color lrC = isHRLR ? color.red : isLRLR ? color.green : color.gray
+    table.cell(dash, 0, 28, "HRLR/LRLR", text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 28, "✓", text_color=lrC, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 28, lrT, text_color=lrC, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 28, str.tostring(swCnt), text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 29: Friday
+    table.cell(dash, 0, 29, f_t("فلتر الجمعة", "Friday"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 29, noTrade ? "⛔" : "✅", text_color=noTrade ? color.red : color.green, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 29, noTrade ? f_t("لا تداول", "No Trade") : f_t("مسموح", "OK"), text_color=noTrade ? color.red : color.green, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 29, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+    // Row 30: Protected Level
+    string prTxt = trend == 1 ? f_t("قاع محمي", "Prot Low") : f_t("قمة محمية", "Prot High")
+    float prVal = trend == 1 ? protL : protH
+    table.cell(dash, 0, 30, prTxt, text_color=color.white, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 1, 30, not na(prVal) ? "✓" : "✗", text_color=not na(prVal) ? color.green : color.gray, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 2, 30, trend == 1 ? "SL ↓" : "SL ↑", text_color=trend == 1 ? color.green : color.red, text_size=size.small, bgcolor=bg2)
+    table.cell(dash, 3, 30, not na(prVal) ? str.tostring(prVal, "#.####") : "-", text_color=color.white, text_size=size.small, bgcolor=bg2)
+
+    // Row 31: Draw on Liquidity
+    table.cell(dash, 0, 31, f_t("هدف السيولة", "Draw on Liq"), text_color=color.white, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 1, 31, "🎯", text_color=#00E5FF, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 2, 31, na(dolTxt) ? "-" : dolTxt, text_color=#00E5FF, text_size=size.small, bgcolor=bg1)
+    table.cell(dash, 3, 31, "-", text_color=color.white, text_size=size.small, bgcolor=bg1)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  24. Alerts (تنبيهات)
+// ══════════════════════════════════════════════════════════════════════════════
+alertcondition(mssNow, title="MSS", message="⚡ الحبي: تحول هيكل السوق (MSS)")
+alertcondition(bosNow, title="BOS", message="📊 الحبي: كسر هيكل (BOS)")
+alertcondition(bullFVG or bearFVG, title="FVG", message="📐 الحبي: فجوة سعرية (FVG)")
+alertcondition(invFVGBull or invFVGBear, title="Inversion FVG", message="🔄 الحبي: انقلاب FVG")
+alertcondition(bullOB or bearOB, title="Order Block", message="🏛 الحبي: كتلة أوامر (OB)")
+alertcondition(bprNow, title="BPR", message="⬛ الحبي: توازن سعري (BPR)")
+alertcondition(bslSw or sslSw, title="BSL/SSL", message="💧 الحبي: سحب سيولة")
+alertcondition(judasBull or judasBear, title="Judas Swing", message="🎭 الحبي: مصيدة يهوذا")
+alertcondition(srH or srL, title="Stop Run", message="🛑 الحبي: ضرب ستوبات")
+alertcondition(cisdNow, title="CISD", message="⚠ الحبي: تغير حالة التسليم (CISD)")
+alertcondition(dispCandle, title="Displacement", message="⚡ الحبي: شمعة اندفاعية")
+alertcondition(noTrade, title="No Trade Zone", message="⛔ الحبي: منطقة لا تداول")
+alertcondition(bullBrker or bearBrker, title="Breaker", message="💥 الحبي: كسارة")
+alertcondition(mitBull or mitBear, title="Mitigation", message="🔧 الحبي: تخفيف")
+alertcondition(eqH, title="Equal Highs", message="🎯 الحبي: قمم متساوية")
+alertcondition(eqL, title="Equal Lows", message="🎯 الحبي: قيعان متساوية")
