@@ -1,14 +1,13 @@
 import streamlit as st
 import pandas as pd
-import random
 from datetime import datetime
-import math
+import random
 
-st.set_page_config(page_title="منصة الحبي للتداول", layout="wide")
+st.set_page_config(page_title="منصة الحبي للتداول", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
-html, body, [class*="css"]  {
+html, body, [class*="css"] {
     direction: rtl;
     text-align: right;
     font-family: 'Noto Kufi Arabic', sans-serif;
@@ -16,210 +15,268 @@ html, body, [class*="css"]  {
 html {
     font-size: 19px;
 }
-.big-title {
-    font-size: 2rem !important;
+.stApp {
+    background: #0d1117;
+    color: #e5e7eb;
+}
+.iconbtn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #1e2536;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 20px;
+}
+.brand {
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.2;
+}
+.subtitle {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin-top: .1rem;
+}
+.tabsline {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0.9rem 1rem 0 1rem;
+    border-bottom: 1px solid #223044;
+}
+.tab {
+    color: #6b7280;
+    font-weight: 700;
+    font-size: 1rem;
+    padding-bottom: .8rem;
+}
+.tab.active {
+    color: #3b82f6;
+    border-bottom: 3px solid #3b82f6;
+}
+.statusbar {
+    margin-top: .8rem;
+    padding: .85rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #161b26;
+    border: 1px solid #263043;
+    border-radius: 18px;
+}
+.dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #ef4444;
+    display: inline-block;
+    margin-left: .5rem;
+}
+.redtxt {
+    color: #f87171;
     font-weight: 800;
 }
-.small-muted {
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div {
+    background: #1e2536 !important;
+    color: #e5e7eb !important;
+    border: 1px solid #334155 !important;
+    border-radius: 14px !important;
+    padding: .9rem 1rem !important;
+}
+.metriccard {
+    background: #161b26;
+    border: 1px solid #263043;
+    border-radius: 18px;
+    padding: 1.2rem;
+    min-height: 120px;
+}
+.metriclabel {
     color: #6b7280;
-    font-size: 0.9rem;
+    font-size: 1rem;
 }
-.card {
-    border: 1px solid #2b3445;
-    border-radius: 16px;
-    padding: 16px;
+.metricvalue {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-top: .2rem;
+}
+.gapbox {
+    height: 250px;
+}
+.empty-box {
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
     background: #161b26;
+    border: 1px solid #263043;
+    border-radius: 18px;
 }
-.metric-box {
-    border: 1px solid #2b3445;
-    border-radius: 16px;
-    padding: 14px;
+.footerbar {
+    margin-top: 1rem;
+    padding: .8rem 1rem;
+    color: #6b7280;
+    font-size: .9rem;
+    text-align: center;
     background: #161b26;
+    border: 1px solid #263043;
+    border-radius: 18px;
 }
-.status-active { color: #22c55e; font-weight: 700; }
-.status-waiting { color: #facc15; font-weight: 700; }
-.status-closed { color: #9ca3af; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
-default_theme = "dark"
-if "theme" not in st.session_state:
-    st.session_state.theme = default_theme
-if "market" not in st.session_state:
-    st.session_state.market = "saudi"
-if "view_mode" not in st.session_state:
-    st.session_state.view_mode = "grid"
-if "font_scale" not in st.session_state:
-    st.session_state.font_scale = 1.15
-if "alerts" not in st.session_state:
-    st.session_state.alerts = []
-if "sound_enabled" not in st.session_state:
-    st.session_state.sound_enabled = True
+for k, v in [
+    ("market", "saudi"),
+    ("sort_by", "strength"),
+    ("filter_strength", "all"),
+    ("view_mode", "grid"),
+    ("update_seconds", 300),
+]:
+    st.session_state.setdefault(k, v)
 
-saudi_trades = [
-    {"symbol": "2222", "name": "أرامكو", "date": "2025-01-15", "status": "active", "strength": 3, "entry": 28.50, "stopLoss": 27.80, "target1": 29.50, "target2": 30.20, "target3": 31.00, "current": 29.10},
-    {"symbol": "1120", "name": "الراجحي", "date": "2025-01-14", "status": "active", "strength": 3, "entry": 95.00, "stopLoss": 93.50, "target1": 97.00, "target2": 99.00, "target3": 102.00, "current": 96.20},
-    {"symbol": "2010", "name": "سابك", "date": "2025-01-13", "status": "waiting", "strength": 2, "entry": 78.00, "stopLoss": 76.50, "target1": 80.00, "target2": 82.00, "target3": 85.00, "current": 77.40},
-    {"symbol": "7010", "name": "STC", "date": "2025-01-12", "status": "active", "strength": 2, "entry": 42.00, "stopLoss": 41.00, "target1": 43.50, "target2": 45.00, "target3": 47.00, "current": 43.10},
-    {"symbol": "4200", "name": "الدواء", "date": "2025-01-10", "status": "waiting", "strength": 1, "entry": 55.00, "stopLoss": 53.80, "target1": 57.00, "target2": 59.00, "target3": 62.00, "current": 54.20},
-    {"symbol": "1180", "name": "الأهلي", "date": "2025-01-09", "status": "closed", "strength": 2, "entry": 38.00, "stopLoss": 37.00, "target1": 39.50, "target2": 41.00, "target3": 43.00, "current": 39.50},
+saudi = [
+    {"symbol": "2222", "name": "أرامكو", "status": "active", "strength": 3, "entry": 28.5, "current": 29.1, "stop": 27.8, "t1": 29.5, "t2": 30.2, "t3": 31.0, "date": "2025-01-15"},
+    {"symbol": "1120", "name": "الراجحي", "status": "active", "strength": 3, "entry": 95.0, "current": 96.2, "stop": 93.5, "t1": 97.0, "t2": 99.0, "t3": 102.0, "date": "2025-01-14"},
+    {"symbol": "2010", "name": "سابك", "status": "waiting", "strength": 2, "entry": 78.0, "current": 77.4, "stop": 76.5, "t1": 80.0, "t2": 82.0, "t3": 85.0, "date": "2025-01-13"},
+    {"symbol": "7010", "name": "STC", "status": "active", "strength": 2, "entry": 42.0, "current": 43.1, "stop": 41.0, "t1": 43.5, "t2": 45.0, "t3": 47.0, "date": "2025-01-12"},
+    {"symbol": "4200", "name": "الدواء", "status": "waiting", "strength": 1, "entry": 55.0, "current": 54.2, "stop": 53.8, "t1": 57.0, "t2": 59.0, "t3": 62.0, "date": "2025-01-10"},
+    {"symbol": "1180", "name": "الأهلي", "status": "closed", "strength": 2, "entry": 38.0, "current": 39.5, "stop": 37.0, "t1": 39.5, "t2": 41.0, "t3": 43.0, "date": "2025-01-09"},
 ]
 
-us_trades = [
-    {"symbol": "AAPL", "name": "Apple", "date": "2025-01-15", "status": "active", "strength": 3, "entry": 192.00, "stopLoss": 188.00, "target1": 198.00, "target2": 205.00, "target3": 212.00, "current": 196.50},
-    {"symbol": "MSFT", "name": "Microsoft", "date": "2025-01-14", "status": "active", "strength": 3, "entry": 415.00, "stopLoss": 408.00, "target1": 425.00, "target2": 435.00, "target3": 450.00, "current": 422.00},
-    {"symbol": "TSLA", "name": "Tesla", "date": "2025-01-13", "status": "waiting", "strength": 2, "entry": 250.00, "stopLoss": 242.00, "target1": 260.00, "target2": 275.00, "target3": 290.00, "current": 247.00},
-    {"symbol": "NVDA", "name": "Nvidia", "date": "2025-01-12", "status": "active", "strength": 3, "entry": 880.00, "stopLoss": 860.00, "target1": 920.00, "target2": 960.00, "target3": 1000.00, "current": 910.00},
-    {"symbol": "AMZN", "name": "Amazon", "date": "2025-01-10", "status": "closed", "strength": 2, "entry": 178.00, "stopLoss": 174.00, "target1": 185.00, "target2": 192.00, "target3": 200.00, "current": 185.00},
+us = [
+    {"symbol": "AAPL", "name": "Apple", "status": "active", "strength": 3, "entry": 192.0, "current": 196.5, "stop": 188.0, "t1": 198.0, "t2": 205.0, "t3": 212.0, "date": "2025-01-15"},
+    {"symbol": "MSFT", "name": "Microsoft", "status": "active", "strength": 3, "entry": 415.0, "current": 422.0, "stop": 408.0, "t1": 425.0, "t2": 435.0, "t3": 450.0, "date": "2025-01-14"},
+    {"symbol": "TSLA", "name": "Tesla", "status": "waiting", "strength": 2, "entry": 250.0, "current": 247.0, "stop": 242.0, "t1": 260.0, "t2": 275.0, "t3": 290.0, "date": "2025-01-13"},
+    {"symbol": "NVDA", "name": "Nvidia", "status": "active", "strength": 3, "entry": 880.0, "current": 910.0, "stop": 860.0, "t1": 920.0, "t2": 960.0, "t3": 1000.0, "date": "2025-01-12"},
+    {"symbol": "AMZN", "name": "Amazon", "status": "closed", "strength": 2, "entry": 178.0, "current": 185.0, "stop": 174.0, "t1": 185.0, "t2": 192.0, "t3": 200.0, "date": "2025-01-10"},
 ]
 
-def get_trades():
-    return saudi_trades if st.session_state.market == "saudi" else us_trades
+def trades():
+    return saudi if st.session_state.market == "saudi" else us
 
-def get_progress(t):
+def progress(t):
     if t["status"] == "waiting":
         return 0
-    rng = t["target1"] - t["entry"]
+    rng = t["t1"] - t["entry"]
     if rng == 0:
         return 0
     return max(0, min(100, ((t["current"] - t["entry"]) / rng) * 100))
 
-def get_pnl(t):
-    diff = t["current"] - t["entry"]
-    pct = (diff / t["entry"]) * 100
-    return diff, pct
+def pnl(t):
+    d = t["current"] - t["entry"]
+    return d, (d / t["entry"]) * 100
 
 def stars(n):
-    return "⭐" * n + "☆" * (3 - n)
+    return "⭐" * n + '<span style="color:#374151">' + "☆" * (3 - n) + "</span>"
 
-def status_label(s):
-    if s == "active":
-        return "نشط"
-    if s == "waiting":
-        return "منتظر"
-    return "مغلق"
+def apply_filters(df):
+    q = st.session_state.get("search", "").lower().strip()
+    if q:
+        df = df[df["symbol"].str.lower().str.contains(q) | df["name"].str.lower().str.contains(q)]
+    fs = st.session_state.filter_strength
+    if fs != "all":
+        df = df[df["strength"] == int(fs)]
+    s = st.session_state.sort_by
+    if s == "strength":
+        df = df.sort_values(["strength", "date"], ascending=[False, False])
+    elif s == "progress":
+        df = df.assign(prog=df.apply(lambda r: progress(r.to_dict()), axis=1))
+        df = df.sort_values(["prog", "date"], ascending=[False, False]).drop(columns=["prog"])
+    else:
+        df = df.sort_values("name")
+    return df
 
-def status_class(s):
-    return {
-        "active": "status-active",
-        "waiting": "status-waiting",
-        "closed": "status-closed",
-    }[s]
-
-def simulate_price_update():
-    trades = get_trades()
-    for t in trades:
-        if t["status"] == "closed":
-            continue
-        vol = t["current"] * 0.003
-        change = (random.random() - 0.45) * vol
-        t["current"] = round(t["current"] + change, 2)
-
-def add_alert(msg):
-    tm = datetime.now().strftime("%H:%M:%S")
-    st.session_state.alerts.insert(0, {"msg": msg, "time": tm})
-    st.session_state.alerts = st.session_state.alerts[:20]
-
-top1, top2, top3 = st.columns([3, 2, 2])
-with top1:
-    st.markdown('<div class="big-title">منصة الحبي للتداول</div>', unsafe_allow_html=True)
-    st.caption("تداول ذكي • تحليل متقدم")
-with top2:
-    st.metric("الوقت الحالي", datetime.now().strftime("%H:%M:%S"))
-with top3:
-    if st.button("تحديث الآن"):
-        simulate_price_update()
-
-st.sidebar.header("الإعدادات")
-st.session_state.market = st.sidebar.radio("السوق", ["saudi", "us"], format_func=lambda x: "السوق السعودي" if x == "saudi" else "السوق الأمريكي")
-st.session_state.view_mode = st.sidebar.radio("طريقة العرض", ["grid", "table"], format_func=lambda x: "البطاقات" if x == "grid" else "الجدول")
-search = st.sidebar.text_input("بحث")
-strength_filter = st.sidebar.selectbox("القوة", ["all", 3, 2, 1], format_func=lambda x: "جميع القوة" if x == "all" else f"قوة {x}")
-sort_by = st.sidebar.selectbox("الترتيب", ["strength", "progress", "name"], format_func=lambda x: {"strength": "بالقوة", "progress": "بالتقدم", "name": "أبجدي"}[x])
-font_option = st.sidebar.selectbox("حجم الخط", ["small", "medium", "large"], format_func=lambda x: {"small": "صغير", "medium": "متوسط", "large": "كبير"}[x])
-if font_option == "small":
-    st.session_state.font_scale = 0.95
-elif font_option == "medium":
-    st.session_state.font_scale = 1.15
+if st.session_state.update_seconds <= 0:
+    st.session_state.update_seconds = 300
+    for t in trades():
+        if t["status"] != "closed":
+            t["current"] = round(t["current"] + (random.random() - 0.45) * t["current"] * 0.003, 2)
 else:
-    st.session_state.font_scale = 1.35
+    st.session_state.update_seconds -= 1
 
-trades = [t.copy() for t in get_trades()]
+c0, c1 = st.columns([1, 10], vertical_alignment="center")
+with c0:
+    st.markdown('<div class="iconbtn">🔔</div>', unsafe_allow_html=True)
+with c1:
+    a, b, c = st.columns([4, 5, 1])
+    with a:
+        st.markdown('<div class="brand">منصة الحبي للتداول</div><div class="subtitle">تداول ذكي • تحليل متقدم</div>', unsafe_allow_html=True)
+    with b:
+        st.markdown(f'<div style="text-align:left;font-size:1.05rem;color:#9ca3af;padding-top:.6rem;">{datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
+    with c:
+        st.markdown('<div class="iconbtn" style="background:#2b82f6;color:white;font-size:1.2rem;font-weight:800;">ح</div>', unsafe_allow_html=True)
 
-if search:
-    q = search.lower()
-    trades = [t for t in trades if q in t["symbol"].lower() or q in t["name"].lower()]
-if strength_filter != "all":
-    trades = [t for t in trades if t["strength"] == strength_filter]
-
-if sort_by == "strength":
-    trades.sort(key=lambda x: x["strength"], reverse=True)
-elif sort_by == "progress":
-    trades.sort(key=lambda x: get_progress(x), reverse=True)
-else:
-    trades.sort(key=lambda x: x["name"])
-
-active_count = len([t for t in trades if t["status"] == "active"])
-waiting_count = len([t for t in trades if t["status"] == "waiting"])
-closed_count = len([t for t in trades if t["status"] == "closed"])
-
-c1, c2, c3, c4 = st.columns(4)
-c1.markdown(f'<div class="metric-box"><div class="small-muted">إجمالي الصفقات</div><div style="font-size:2rem;font-weight:800;">{len(trades)}</div></div>', unsafe_allow_html=True)
-c2.markdown(f'<div class="metric-box"><div class="small-muted">صفقات نشطة</div><div style="font-size:2rem;font-weight:800;color:#22c55e;">{active_count}</div></div>', unsafe_allow_html=True)
-c3.markdown(f'<div class="metric-box"><div class="small-muted">صفقات منتظرة</div><div style="font-size:2rem;font-weight:800;color:#facc15;">{waiting_count}</div></div>', unsafe_allow_html=True)
-c4.markdown(f'<div class="metric-box"><div class="small-muted">صفقات مغلقة</div><div style="font-size:2rem;font-weight:800;color:#9ca3af;">{closed_count}</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="tabsline"><div class="tab">السوق الأمريكي us</div><div class="tab active">السوق السعودي sa</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="statusbar"><div><span class="dot"></span><span class="redtxt">السوق مغلق - يفتح بعد 6س 40د</span> <span style="color:#6b7280;margin-right:1rem;">{datetime.now().strftime("%H:%M:%S")}</span></div><div style="color:#6b7280;">آخر تحديث: --:-- | التحديث كل 5 دقائق</div></div>', unsafe_allow_html=True)
 
 st.write("")
+q1, q2, q3, q4 = st.columns([3, 2.2, 2.2, 4.6])
+with q4:
+    st.text_input("", placeholder="ابحث بالرمز أو الاسم...", key="search", label_visibility="collapsed")
+with q3:
+    st.session_state.sort_by = st.selectbox("", ["strength", "progress", "name"], format_func=lambda x: {"strength": "ترتيب بالقوة", "progress": "ترتيب بالتقدم", "name": "ترتيب أبجدي"}[x], label_visibility="collapsed")
+with q2:
+    st.session_state.filter_strength = st.selectbox("", ["all", 3, 2, 1], format_func=lambda x: "جميع القوة" if x == "all" else f"قوة {x}", label_visibility="collapsed")
+with q1:
+    st.session_state.view_mode = st.selectbox("", ["grid", "table"], format_func=lambda x: "عرض البطاقات" if x == "grid" else "عرض الجدول", label_visibility="collapsed")
 
-if st.session_state.view_mode == "table":
-    rows = []
-    for t in trades:
-        diff, pct = get_pnl(t)
-        rows.append({
-            "الرمز": t["symbol"],
-            "الاسم": t["name"],
-            "التاريخ": t["date"],
-            "الحالة": status_label(t["status"]),
-            "القوة": stars(t["strength"]),
-            "نقطة الدخول": f'{t["entry"]:.2f}',
-            "السعر الحالي": f'{t["current"]:.2f}',
-            "الربح/الخسارة %": f'{pct:.2f}%',
-            "وقف الخسارة": f'{t["stopLoss"]:.2f}',
-            "الهدف 1": f'{t["target1"]:.2f}',
-            "الهدف 2": f'{t["target2"]:.2f}',
-            "الهدف 3": f'{t["target3"]:.2f}',
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+st.write("")
+raw = pd.DataFrame(trades())
+filtered = apply_filters(raw.copy())
+
+m1, m2, m3, m4 = st.columns(4)
+for c, label, val, color in [
+    (m4, "إجمالي الصفقات", len(filtered), "#ffffff"),
+    (m3, "صفقات نشطة", int((filtered["status"] == "active").sum()) if len(filtered) else 0, "#4ade80"),
+    (m2, "صفقات منتظرة", int((filtered["status"] == "waiting").sum()) if len(filtered) else 0, "#facc15"),
+    (m1, "صفقات مغلقة", int((filtered["status"] == "closed").sum()) if len(filtered) else 0, "#9ca3af"),
+]:
+    c.markdown(f'<div class="metriccard"><div class="metriclabel">{label}</div><div class="metricvalue" style="color:{color}">{val}</div></div>', unsafe_allow_html=True)
+
+st.write("")
+if len(filtered) == 0:
+    st.markdown('<div class="empty-box"><div style="font-size:4rem;line-height:1;">🗃️</div><div style="margin-top:1rem;font-size:1.15rem;">لا توجد صفقات مطابقة للبحث</div></div>', unsafe_allow_html=True)
 else:
-    cols = st.columns(3)
-    for i, t in enumerate(trades):
-        with cols[i % 3]:
-            diff, pct = get_pnl(t)
-            prog = get_progress(t)
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown(f'### {t["symbol"]} - {t["name"]}')
-            st.caption(f'📅 {t["date"]} | {stars(t["strength"])}')
-            st.markdown(f'**الحالة:** <span class="{status_class(t["status"])}">{status_label(t["status"])}</span>', unsafe_allow_html=True)
-            if t["status"] == "active":
-                st.progress(int(prog))
-                st.write(f"التقدم نحو الهدف 1: {prog:.0f}%")
-                if diff >= 0:
-                    st.success(f"السعر الحالي: {t['current']:.2f} | الربح: +{pct:.2f}%")
-                else:
-                    st.error(f"السعر الحالي: {t['current']:.2f} | الخسارة: {pct:.2f}%")
-            st.write(f"نقطة الدخول: {t['entry']:.2f}")
-            st.write(f"وقف الخسارة: {t['stopLoss']:.2f}")
-            st.write(f"الهدف 1: {t['target1']:.2f}")
-            st.write(f"الهدف 2: {t['target2']:.2f}")
-            st.write(f"الهدف 3: {t['target3']:.2f}")
-            st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.view_mode == "table":
+        rows = []
+        for _, r in filtered.iterrows():
+            _, p = pnl(r.to_dict())
+            rows.append([
+                r["symbol"], r["name"], r["date"],
+                "نشط" if r["status"] == "active" else "منتظر" if r["status"] == "waiting" else "مغلق",
+                "⭐" * int(r["strength"]), f'{r["entry"]:.2f}', f'{r["current"]:.2f}',
+                f'{p:+.2f}%', f'{r["stop"]:.2f}', f'{r["t1"]:.2f}', f'{r["t2"]:.2f}', f'{r["t3"]:.2f}'
+            ])
+        st.dataframe(pd.DataFrame(rows, columns=["الرمز", "الاسم", "التاريخ", "الحالة", "القوة", "الدخول", "الحالي", "ربح/خسارة", "وقف", "هدف1", "هدف2", "هدف3"]), use_container_width=True, hide_index=True)
+    else:
+        cols = st.columns(3)
+        for i, (_, r) in enumerate(filtered.iterrows()):
+            t = r.to_dict()
+            _, p = pnl(t)
+            with cols[i % 3]:
+                st.markdown(f"""
+<div style="background:#161b26;border:1px solid #263043;border-radius:18px;padding:1rem;min-height:220px;">
+<div style="display:flex;justify-content:space-between;align-items:center;">
+<div><div style="font-size:1.15rem;font-weight:800;color:#fff;">{t['symbol']}</div><div style="color:#94a3b8;">{t['name']}</div></div>
+<div style="text-align:left;color:#94a3b8;">{t['date']}<br>{stars(int(t['strength']))}</div>
+</div>
+<div style="margin-top:.8rem;font-weight:700;color:{'#4ade80' if t['status']=='active' else '#facc15' if t['status']=='waiting' else '#9ca3af'};">
+{'نشط' if t['status']=='active' else 'منتظر' if t['status']=='waiting' else 'مغلق'}
+</div>
+<div style="margin-top:.7rem;color:#9ca3af;">نقطة الدخول: <b style="color:#fff">{t['entry']:.2f}</b></div>
+<div style="color:#9ca3af;">السعر الحالي: <b style="color:#fff">{t['current']:.2f}</b></div>
+<div style="margin-top:.5rem;color:{'#4ade80' if p>=0 else '#f87171'};font-weight:800;">الربح/الخسارة: {p:+.2f}%</div>
+<div style="margin-top:.7rem;height:8px;background:#0d1117;border-radius:999px;overflow:hidden;"><div style="height:8px;width:{progress(t)}%;background:linear-gradient(90deg,#22c55e,#3b82f6);border-radius:999px;"></div></div>
+</div>
+""", unsafe_allow_html=True)
 
-st.write("---")
-st.subheader("التنبيهات")
-if st.session_state.alerts:
-    for a in st.session_state.alerts[:5]:
-        st.info(f'{a["msg"]} — {a["time"]}')
-else:
-    st.caption("لا توجد تنبيهات حالياً")
-
-st.caption("جميع الحقوق محفوظة © 2025 منصة الحبي للتداول. هذه المنصة لأغراض تعليمية فقط.")
+st.write("")
+st.markdown('<div class="gapbox"></div>', unsafe_allow_html=True)
+st.markdown('<div class="footerbar">جميع الحقوق محفوظة © 2025 منصة الحبي للتداول. هذه المنصة لأغراض تعليمية فقط ولا تتحمل أي التزامات مالية.</div>', unsafe_allow_html=True)
