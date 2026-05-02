@@ -1204,8 +1204,17 @@ def _run_scan(watchlist, cfg):
 # ═══════════════════════════════════════════════════════════
 def main():
     st.markdown(get_css(), unsafe_allow_html=True)
+    
+    # حجز مكان لرأس الصفحة في الأعلى
+    header_placeholder = st.empty()
+    
+    # رسم لوحة التحكم
     mode, ticker, smt_ticker, watchlist, preset, cfg, run_btn, scan_btn = render_controls()
-    render_header(mode, ticker, smt_ticker, preset, len(watchlist) if watchlist else 0)
+    
+    # رسم رأس الصفحة في المكان المخصص له (في الأعلى)
+    with header_placeholder:
+        render_header(mode, ticker, smt_ticker, preset, len(watchlist) if watchlist else 0)
+    
     st.markdown("<br>", unsafe_allow_html=True)
     if mode == "single":
         render_single(ticker, smt_ticker, cfg, run_btn)
