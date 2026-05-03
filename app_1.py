@@ -1,218 +1,238 @@
-# app_v6.py — منصة الحبي للتداول v6 Pro
-# يعمل مباشرة: streamlit run app_v6.py
-import streamlit as st
+from pathlib import Path
+Path('output').mkdir(exist_ok=True)
+code = '''import streamlit as st
 import pandas as pd
-import streamlit.components.v1 as components
-from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pydantic import BaseModel
-from typing import List, Optional
-import random
+from datetime import datetime
 
-# ==================== CONFIG ====================
-st.set_page_config(page_title="منصة الحبي Pro", page_icon="ح", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="منصة الحبي للتداول", layout="wide", initial_sidebar_state="collapsed")
 
-class Config:
-    THEME_DARK = {
-        "bg": "#0B0D16", "card": "#11141F", "brd": "#1C2136",
-        "txt": "#E2E8F5", "txt2": "#8896B2", "accent": "#3B82F6",
-        "green": "#22C55E", "red": "#EF4444", "amber": "#F59E0B"
-    }
-
-# ==================== MODELS ====================
-class SignalRow(BaseModel):
-    ticker: str
-    name: str
-    grade: str
-    bias: str
-    entry: float
-    sl: float
-    tp1: float
-    wave: float
-    rr: float
-    liquidity: str
-    score: int
-    current: Optional[float] = None
-    scan_date: str
-
-# ==================== MOCK ENGINE ====================
-# احذف هذا القسم عندما تربط engine.py الحقيقي
-class MockEngine:
-    def run_engine(self, ticker, market):
-        # محاكاة بيانات
-        base = 100 + random.uniform(-20, 20)
-        return {
-            "entry": round(base, 2),
-            "sl": round(base * 0.97, 2),
-            "tp1": round(base * 1.04, 2),
-            "wave": round(base * 1.08, 2),
-            "bias": random.choice(["Long", "Short"]),
-            "grade": random.choice(["A+", "A", "B", "C"]),
-            "liquidity": "OB",
-            "rr": 2.5,
-            "score": random.randint(70, 95)
-        }
-
-    def extract_row(self, data, ticker, market):
-        return data
-
-E = MockEngine()
-
-# ==================== DATA LAYER ====================
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_signal(ticker: str, market: str) -> SignalRow:
-    try:
-        data = E.run_engine(ticker, market)
-        current = data["entry"] * random.uniform(0.99, 1.01)
-        return SignalRow(
-            ticker=ticker,
-            name=ticker,
-            grade=data["grade"],
-            bias=data["bias"],
-            entry=data["entry"],
-            sl=data["sl"],
-            tp1=data["tp1"],
-            wave=data["wave"],
-            rr=data["rr"],
-            liquidity=data["liquidity"],
-            score=data["score"],
-            current=round(current, 2),
-            scan_date=datetime.now().strftime("%Y-%m-%d")
-        )
-    except Exception as e:
-        return SignalRow(ticker=ticker, name=ticker, grade="ERR", bias="-",
-                         entry=0, sl=0, tp1=0, wave=0, rr=0, liquidity="-", score=0,
-                         scan_date=datetime.now().strftime("%Y-%m-%d"))
-
-def scan_watchlist(tickers: List[str], market: str) -> pd.DataFrame:
-    results = []
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {pool.submit(fetch_signal, t, market): t for t in tickers}
-        for f in as_completed(futures):
-            results.append(f.result().model_dump())
-    df = pd.DataFrame(results)
-    grade_order = {"A+": 0, "A": 1, "B": 2, "C": 3, "ERR": 4}
-    df["rank"] = df["grade"].map(grade_order).fillna(5)
-    return df.sort_values(["rank", "score"], ascending=[True, False]).reset_index(drop=True)
-
-# ==================== UI HELPERS ====================
-def market_status(market: str):
-    now = datetime.now(timezone.utc)
-    if market == "SA":
-        # تاسي 10:00 - 15:00 بتوقيت الرياض
-        is_open = 7 <= now.hour <= 12 # تقريبي
-    else:
-        is_open = 14 <= now.hour <= 21 # أمريكي
-    return is_open, "يغلق بعد 2س 15د" if is_open else "يفتح بعد 5س"
-
-def render_chart(entry, sl, tp1, wave, ticker):
-    # Lightweight Charts مدمج
-    html = f"""
-    <div id="chart" style="height:400px;"></div>
-    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <script>
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {{
-        layout: {{background: {{color: '#11141F'}}, textColor: '#E2E8F5'}},
-        grid: {{vertLines: {{color: '#1C2136'}}, horzLines: {{color: '#1C2136'}}}},
-        rightPriceScale: {{borderColor: '#1C2136'}},
-    }});
-    const series = chart.addCandlestickSeries();
-    const data = [];
-    let base = {entry};
-    for(let i=0;i<80;i++){{
-        base += (Math.random()-0.5)*2;
-        data.push({{time: 1700000000 + i*86400, open: base, high: base+1, low: base-1, close: base+0.5}})
-    }}
-    series.setData(data);
-    series.createPriceLine({{price: {entry}, color: '#3B82F6', lineWidth: 2, title: 'دخول'}});
-    series.createPriceLine({{price: {sl}, color: '#EF4444', lineWidth: 2, title: 'وقف'}});
-    series.createPriceLine({{price: {tp1}, color: '#22C55E', lineWidth: 2, title: 'هدف1'}});
-    series.createPriceLine({{price: {wave}, color: '#F59E0B', lineWidth: 2, lineStyle: 2, title: 'موجة'}});
-    </script>
-    """
-    components.html(html, height=420)
-
-# ==================== MAIN APP ====================
-if "theme" not in st.session_state: st.session_state.theme = "dark"
-if "market" not in st.session_state: st.session_state.market = "US"
-if "df" not in st.session_state: st.session_state.df = None
-
-theme = Config.THEME_DARK
-
-# CSS محترف مختصر
-st.markdown(f"""
+st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;900&display=swap');
-html,body{{font-family:'Tajawal',sans-serif;direction:rtl;background:{theme['bg']};color:{theme['txt']}}}
-.header{{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:{theme['card']};border-bottom:1px solid {theme['brd']}}}
-.logo{{font-size:1.4rem;font-weight:900;color:{theme['accent']}}}
-.card{{background:{theme['card']};border:1px solid {theme['brd']};border-radius:14px;padding:16px;margin-bottom:12px}}
-.stat{{text-align:center}}.stat-v{{font-size:2rem;font-weight:900}}
-.badge{{padding:4px 10px;border-radius:12px;font-size:0.75rem;font-weight:700}}
-.badge-a{{background:rgba(34,197,94,.15);color:{theme['green']}}}
-.badge-b{{background:rgba(245,158,11,.15);color:{theme['amber']}}}
+html, body, [class*="css"] { direction: rtl; text-align: right; font-family: 'Noto Kufi Arabic', 'Segoe UI', sans-serif; }
+html { font-size: 19px; }
+.stApp { background: #0d1117; color: #e5e7eb; }
+.block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 100% !important; }
+.shell { background:#161b26; border:1px solid #263244; border-radius:18px; box-shadow:0 8px 24px rgba(0,0,0,0.18); }
+.top-shell { padding: 1rem 1.1rem; margin-bottom: 0.9rem; }
+.iconbtn { width: 46px; height: 46px; border-radius: 14px; background: #1e2536; display: flex; align-items: center; justify-content: center; color: #aab3c5; font-size: 1.1rem; border: 1px solid #2b3550; }
+.brand-badge { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg,#2f80ed,#29b6f6); display:flex; align-items:center; justify-content:center; color:white; font-size:1.8rem; font-weight:800; box-shadow:0 10px 28px rgba(41,182,246,0.28); }
+.brand-title { font-size:1.8rem; line-height:1.2; font-weight:900; color:#fff; margin:0; }
+.brand-sub { color:#7a8497; font-size:0.93rem; margin-top:0.15rem; }
+.clock-box { color:#aab3c5; font-size:1.05rem; font-weight:700; letter-spacing:0.5px; }
+.tabs-shell { margin-bottom:0.65rem; border-bottom:1px solid #232c3b; padding:0 0.5rem; }
+.market-tab { display:inline-flex; align-items:center; gap:0.45rem; color:#7b8498; font-size:1.05rem; font-weight:800; padding:0.95rem 0.3rem 0.8rem 0.3rem; margin-left:1.25rem; border-bottom:3px solid transparent; }
+.market-tab.active { color:#3b82f6; border-bottom-color:#3b82f6; }
+.status-shell { background:#0f1520; border:1px solid #243041; border-radius:16px; padding:0.95rem 1rem; margin-bottom:1rem; }
+.status-dot { width:13px; height:13px; border-radius:999px; background:#ef4444; display:inline-block; margin-left:0.5rem; box-shadow:0 0 0 6px rgba(239,68,68,0.12); }
+.status-text { color:#f87171; font-size:1.05rem; font-weight:900; }
+.status-meta { color:#7b8498; font-size:0.95rem; }
+.metric-card { background:#161b26; border:1px solid #263244; border-radius:18px; box-shadow:0 8px 24px rgba(0,0,0,0.10); padding:1rem 1.1rem; min-height:112px; }
+.metric-label { color:#7b8498; font-size:0.98rem; margin-bottom:0.4rem; }
+.metric-value { font-size:2.1rem; font-weight:900; line-height:1; }
+.input-wrap .stTextInput > div > div > input, .input-wrap .stSelectbox > div > div > div, .input-wrap .stTextArea > div > div > textarea { background:#1e2536 !important; color:#e5e7eb !important; border:1px solid #334155 !important; border-radius:14px !important; padding:0.95rem 1rem !important; font-size:1rem !important; }
+.input-wrap label { display:none !important; }
+.card-shell { background:#161b26; border:1px solid #263244; border-radius:18px; box-shadow:0 8px 24px rgba(0,0,0,0.12); padding:1rem; min-height:280px; }
+.symbol { font-size:1.15rem; font-weight:900; color:#fff; }
+.company { color:#97a3b8; font-size:0.98rem; }
+.badge { display:inline-block; padding:0.28rem 0.68rem; border-radius:999px; font-size:0.8rem; font-weight:800; }
+.badge-active { background:rgba(34,197,94,0.16); color:#4ade80; }
+.badge-waiting { background:rgba(250,204,21,0.14); color:#facc15; }
+.badge-closed { background:rgba(148,163,184,0.12); color:#9ca3af; }
+.badge-up { background:rgba(34,197,94,0.16); color:#4ade80; }
+.badge-down { background:rgba(239,68,68,0.16); color:#f87171; }
+.small-label { color:#7b8498; font-size:0.82rem; }
+.small-value { color:#fff; font-size:0.98rem; font-weight:800; }
+.progress-track { height:10px; background:#0d1117; border-radius:999px; overflow:hidden; }
+.progress-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#22c55e,#3b82f6); }
+.empty-shell { min-height:290px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#6f7b90; margin-top:0.9rem; background:#161b26; border:1px solid #263244; border-radius:18px; }
+.empty-icon { font-size:4rem; line-height:1; opacity:0.5; }
+.footer-shell { margin-top:1rem; padding:0.85rem 1rem; color:#6f7b90; font-size:0.92rem; text-align:center; background:#161b26; border:1px solid #263244; border-radius:18px; }
+.divider-gap { height:60px; }
+.icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.icon-item { background:#161b26; border:1px solid #263244; border-radius:18px; padding:14px 10px; text-align:center; }
+.icon-circle { width:56px; height:56px; border-radius:18px; margin:0 auto 8px; background:#1e2536; display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.5rem; border:1px solid #2b3550; }
+.icon-title { font-size:0.95rem; font-weight:800; color:#fff; line-height:1.25; }
+.icon-short { font-size:0.78rem; color:#7b8498; margin-top:3px; }
+.chat-box { background:#161b26; border:1px solid #263244; border-radius:18px; padding:16px; }
+.msg { padding:12px 14px; border-radius:14px; margin:10px 0; }
+.msg-user { background:#1e2536; border:1px solid #334155; }
+.msg-bot { background:#0f1520; border:1px solid #243041; }
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-is_open, cd = market_status(st.session_state.market)
+for k, v in [("market", "saudi"), ("sort_by", "strength"), ("filter_strength", "all"), ("view_mode", "grid"), ("search", ""), ("trend_filter", "all"), ("selected_symbol", None)]:
+    st.session_state.setdefault(k, v)
+
+saudi = [
+    {"symbol":"2222","name":"أرامكو","status":"active","strength":3,"entry":28.50,"current":29.10,"stop":27.80,"t1":29.50,"t2":30.20,"t3":31.00,"date":"2025-01-15","direction":"صاعد"},
+    {"symbol":"1120","name":"الراجحي","status":"active","strength":3,"entry":95.00,"current":96.20,"stop":93.50,"t1":97.00,"t2":99.00,"t3":102.00,"date":"2025-01-14","direction":"صاعد"},
+    {"symbol":"2010","name":"سابك","status":"waiting","strength":2,"entry":78.00,"current":77.40,"stop":76.50,"t1":80.00,"t2":82.00,"t3":85.00,"date":"2025-01-13","direction":"هابط"},
+    {"symbol":"7010","name":"STC","status":"active","strength":2,"entry":42.00,"current":43.10,"stop":41.00,"t1":43.50,"t2":45.00,"t3":47.00,"date":"2025-01-12","direction":"صاعد"},
+    {"symbol":"4200","name":"الدواء","status":"waiting","strength":1,"entry":55.00,"current":54.20,"stop":53.80,"t1":57.00,"t2":59.00,"t3":62.00,"date":"2025-01-10","direction":"هابط"},
+    {"symbol":"1180","name":"الأهلي","status":"closed","strength":2,"entry":38.00,"current":39.50,"stop":37.00,"t1":39.50,"t2":41.00,"t3":43.00,"date":"2025-01-09","direction":"صاعد"},
+]
+
+us = [
+    {"symbol":"AAPL","name":"Apple","status":"active","strength":3,"entry":192.00,"current":196.50,"stop":188.00,"t1":198.00,"t2":205.00,"t3":212.00,"date":"2025-01-15","direction":"صاعد"},
+    {"symbol":"MSFT","name":"Microsoft","status":"active","strength":3,"entry":415.00,"current":422.00,"stop":408.00,"t1":425.00,"t2":435.00,"t3":450.00,"date":"2025-01-14","direction":"صاعد"},
+    {"symbol":"TSLA","name":"Tesla","status":"waiting","strength":2,"entry":250.00,"current":247.00,"stop":242.00,"t1":260.00,"t2":275.00,"t3":290.00,"date":"2025-01-13","direction":"هابط"},
+    {"symbol":"NVDA","name":"Nvidia","status":"active","strength":3,"entry":880.00,"current":910.00,"stop":860.00,"t1":920.00,"t2":960.00,"t3":1000.00,"date":"2025-01-12","direction":"صاعد"},
+    {"symbol":"AMZN","name":"Amazon","status":"closed","strength":2,"entry":178.00,"current":185.00,"stop":174.00,"t1":185.00,"t2":192.00,"t3":200.00,"date":"2025-01-10","direction":"صاعد"},
+]
+
+def get_trades():
+    return saudi if st.session_state.market == "saudi" else us
+
+def get_progress(t):
+    if t["status"] == "waiting": return 0
+    rng = t["t1"] - t["entry"]
+    return 0 if rng == 0 else max(0, min(100, ((t["current"] - t["entry"]) / rng) * 100))
+
+def get_pnl(t):
+    d = t["current"] - t["entry"]
+    return d, (d / t["entry"]) * 100
+
+def apply_filters(df):
+    q = st.session_state.search.lower().strip()
+    if q:
+        df = df[df["symbol"].str.lower().str.contains(q) | df["name"].str.lower().str.contains(q)]
+    fs = st.session_state.filter_strength
+    if fs != "all": df = df[df["strength"] == int(fs)]
+    tr = st.session_state.trend_filter
+    if tr != "all": df = df[df["direction"] == tr]
+    sb = st.session_state.sort_by
+    if sb == "strength": df = df.sort_values(["strength", "date"], ascending=[False, False])
+    elif sb == "progress": df = df.assign(_p=df.apply(lambda r: get_progress(r.to_dict()), axis=1)).sort_values(["_p", "date"], ascending=[False, False]).drop(columns=["_p"])
+    else: df = df.sort_values("name")
+    return df
+
+def badge_for_direction(d):
+    return "badge-up" if d == "صاعد" else "badge-down"
+
 st.markdown(f"""
-<div class="header">
-  <div class="logo">ح منصة الحبي Pro</div>
-  <div>{'🟢 مفتوح' if is_open else '🔴 مغلق'} · {cd}</div>
+<div class="top-shell">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+    <div style="display:flex;align-items:center;gap:0.8rem;">
+      <div class="iconbtn">🔔</div>
+      <div class="iconbtn">🔊</div>
+      <div class="iconbtn">☼</div>
+      <div class="clock-box">{datetime.now().strftime("%H:%M:%S")}</div>
+    </div>
+    <div class="brand-wrap">
+      <div style="text-align:right;">
+        <div class="brand-title">منصة الحبي للتداول</div>
+        <div class="brand-sub">تداول ذكي • تحليل متقدم</div>
+      </div>
+      <div class="brand-badge">ح</div>
+    </div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Controls
-c1, c2, c3, c4 = st.columns([1,1,1,2])
-with c1:
-    if st.button("🇸🇦 سعودي", use_container_width=True, type="primary" if st.session_state.market=="SA" else "secondary"):
-        st.session_state.market = "SA"; st.rerun()
-with c2:
-    if st.button("🇺🇸 أمريكي", use_container_width=True, type="primary" if st.session_state.market=="US" else "secondary"):
-        st.session_state.market = "US"; st.rerun()
-with c3:
-    market_code = "2222.SR" if st.session_state.market=="SA" else "QQQ"
-    tickers = ["2222","1120","2010","7010","1180"] if st.session_state.market=="SA" else ["AAPL","MSFT","NVDA","TSLA","AMD"]
-with c4:
-    if st.button("📡 مسح الرادار الآن", type="primary", use_container_width=True):
-        with st.spinner("جاري المسح..."):
-            st.session_state.df = scan_watchlist(tickers, market_code)
-            st.success(f"تم مسح {len(tickers)} سهم")
+st.markdown("""
+<div class="tabs-shell">
+  <span class="market-tab">السوق الأمريكي US</span>
+  <span class="market-tab active">السوق السعودي SA</span>
+</div>
+""", unsafe_allow_html=True)
 
-# Stats
-if st.session_state.df is not None and not st.session_state.df.empty:
-    df = st.session_state.df
-    total, active = len(df), len(df[df["grade"].isin(["A+","A"])])
-    c1,c2,c3,c4 = st.columns(4)
-    for col, label, val in [(c1,"الإجمالي",total),(c2,"نشط",active),(c3,"منتظر",len(df[df['grade']=='B'])),(c4,"قوة",f"{df['score'].mean():.0f}%")]:
-        with col: st.markdown(f"<div class='card stat'><div>{label}</div><div class='stat-v'>{val}</div></div>", unsafe_allow_html=True)
+st.markdown(f"""
+<div class="status-shell">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <div><span class="status-dot"></span><span class="status-text">السوق مغلق - يفتح بعد 6س 40د</span></div>
+    <div class="status-meta">آخر تحديث: {datetime.now().strftime("%H:%M:%S")} • التحديث كل 5 دقائق</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Table
-if st.session_state.df is not None:
-    df = st.session_state.df
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    for i, row in df.iterrows():
-        color = theme['green'] if row['bias']=="Long" else theme['red']
-        badge = "badge-a" if row['grade'] in ["A+","A"] else "badge-b"
-        st.markdown(f"""
-        <div style="display:grid;grid-template-columns:60px 100px 1fr 90px 90px 90px 80px; padding:10px 0; border-bottom:1px solid {theme['brd']}">
-          <div>{i+1}</div>
-          <div style="font-weight:800">{row['ticker']}</div>
-          <div><span class="badge {badge}">{row['grade']}</span></div>
-          <div style="color:{color}">{row['entry']}</div>
-          <div>{row['current']}</div>
-          <div style="color:{theme['red']}">{row['sl']}</div>
-          <div style="color:{theme['green']}">{row['tp1']}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('<div class="input-wrap">', unsafe_allow_html=True)
+col_f1, col_f2, col_f3, col_f4 = st.columns([2.8, 2.0, 2.0, 5.2])
+with col_f4:
+    st.text_input("", placeholder="ابحث بالرمز أو الاسم...", key="search", label_visibility="collapsed")
+with col_f3:
+    st.session_state.sort_by = st.selectbox("", ["strength", "progress", "name"], format_func=lambda x: {"strength":"ترتيب بالقوة", "progress":"ترتيب بالتقدم", "name":"ترتيب أبجدي"}[x], label_visibility="collapsed")
+with col_f2:
+    st.session_state.filter_strength = st.selectbox("", ["all", 3, 2, 1], format_func=lambda x: "جميع القوة" if x == "all" else f"قوة {x}", label_visibility="collapsed")
+with col_f1:
+    st.session_state.trend_filter = st.selectbox("", ["all", "صاعد", "هابط"], format_func=lambda x: "جميع الاتجاهات" if x == "all" else ("اتجاه صاعد" if x == "صاعد" else "اتجاه هابط"), label_visibility="collapsed")
+st.markdown('</div>', unsafe_allow_html=True)
 
-    # تفاصيل أول سهم
-    if not df.empty:
-        first = df.iloc[0]
-        st.markdown(f"<div class='card'><h3>تحليل {first['ticker']} — {first['grade']}</h3></div>", unsafe_allow_html=True)
-        render_chart(first['entry'], first['sl'], first['tp1'], first['wave'], first['ticker'])
+st.write("")
+filtered = apply_filters(pd.DataFrame(get_trades()).copy())
 
+m1, m2, m3, m4 = st.columns(4)
+vals = [
+    (m4, "إجمالي الصفقات", len(filtered), "#ffffff"),
+    (m3, "صفقات نشطة", int((filtered["status"] == "active").sum()) if len(filtered) else 0, "#4ade80"),
+    (m2, "صفقات منتظرة", int((filtered["status"] == "waiting").sum()) if len(filtered) else 0, "#facc15"),
+    (m1, "صفقات مغلقة", int((filtered["status"] == "closed").sum()) if len(filtered) else 0, "#9ca3af"),
+]
+for c, label, val, color in vals:
+    c.markdown(f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value" style="color:{color}">{val}</div></div>', unsafe_allow_html=True)
+
+st.write("")
+icon_items = [("🔔", "تنبيهات", "NTF"), ("🔊", "صوت", "AUD"), ("☼", "مظهر", "THM"), ("↕", "فلتر", "FLT")]
+st.markdown('<div class="icon-grid">' + ''.join([f'<div class="icon-item"><div class="icon-circle">{i}</div><div class="icon-title">{t}</div><div class="icon-short">{s}</div></div>' for i,t,s in icon_items]) + '</div>', unsafe_allow_html=True)
+
+st.write("")
+
+if len(filtered) == 0:
+    st.markdown('<div class="empty-shell"><div class="empty-icon">🗃️</div><div style="margin-top:0.9rem;font-size:1.1rem;">لا توجد صفقات مطابقة للبحث</div></div>', unsafe_allow_html=True)
 else:
-    st.info("اضغط مسح الرادار لبدء التحليل")
+    if st.session_state.view_mode == "table":
+        rows = []
+        for _, r in filtered.iterrows():
+            _, p = get_pnl(r.to_dict())
+            rows.append([r["symbol"], r["name"], r["date"], "نشط" if r["status"] == "active" else "منتظر" if r["status"] == "waiting" else "مغلق", r["direction"], "⭐" * int(r["strength"]), f'{r["entry"]:.2f}', f'{r["current"]:.2f}', f'{p:+.2f}%', f'{r["stop"]:.2f}', f'{r["t1"]:.2f}', f'{r["t2"]:.2f}', f'{r["t3"]:.2f}'])
+        st.dataframe(pd.DataFrame(rows, columns=["الرمز", "الاسم", "التاريخ", "الحالة", "الاتجاه", "القوة", "الدخول", "الحالي", "ربح/خسارة", "وقف", "هدف1", "هدف2", "هدف3"]), use_container_width=True, hide_index=True)
+    else:
+        cols = st.columns(4)
+        for i, (_, r) in enumerate(filtered.iterrows()):
+            t = r.to_dict()
+            _, p = get_pnl(t)
+            status_class = "badge-active" if t["status"] == "active" else "badge-waiting" if t["status"] == "waiting" else "badge-closed"
+            status_text = "نشط" if t["status"] == "active" else "منتظر" if t["status"] == "waiting" else "مغلق"
+            dir_class = badge_for_direction(t["direction"])
+            with cols[i % 4]:
+                st.markdown(f"""
+<div class="card-shell">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+    <div>
+      <div class="symbol">{t['symbol']}</div>
+      <div class="company">{t['name']}</div>
+      <div style="margin-top:0.35rem;color:#768299;font-size:0.8rem;">{t['date']}</div>
+    </div>
+    <div style="text-align:left;">
+      <span class="badge {status_class}">{status_text}</span>
+      <div style="margin-top:0.35rem;"><span class="badge {dir_class}">{t['direction']}</span></div>
+      <div style="margin-top:0.4rem;color:#94a3b8;font-size:0.85rem;">{'⭐' * int(t['strength'])}</div>
+    </div>
+  </div>
+  <div style="margin-top:0.85rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+    <div class="small-label">التقدم نحو الهدف 1</div>
+    <div style="color:{'#4ade80' if p >= 0 else '#f87171'};font-weight:900;">{p:+.2f}%</div>
+  </div>
+  <div class="progress-track"><div class="progress-fill" style="width:{get_progress(t)}%;"></div></div>
+  <div style="margin-top:0.9rem;display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;">
+    <div><div class="small-label">نقطة الدخول</div><div class="small-value">{t['entry']:.2f}</div></div>
+    <div><div class="small-label">وقف الخسارة</div><div class="small-value" style="color:#f87171;">{t['stop']:.2f}</div></div>
+    <div><div class="small-label">الهدف 1</div><div class="small-value" style="color:#4ade80;">{t['t1']:.2f}</div></div>
+    <div><div class="small-label">السعر الحالي</div><div class="small-value">{t['current']:.2f}</div></div>
+  </div>
+  <div style="margin-top:0.8rem;display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;">
+    <div><div class="small-label">الهدف 2</div><div class="small-value" style="color:#4ade80;">{t['t2']:.2f}</div></div>
+    <div><div class="small-label">الهدف 3</div><div class="small-value" style="color:#22d3ee;">{t['t3']:.2f}</div></div>
+  </div>
+  <div style="margin-top:0.9rem;display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;">
+    <div class="shell" style="padding:10px 12px;text-align:center;">طلب تحليل الصفقة</div>
+    <div class="shell" style="padding:10px 12px;text-align:center;">تواصل لتحليل الصفقه</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="divider-gap"></div>', unsafe_allow_html=True)
+st.markdown('<div class="empty-shell"><div class="empty-icon">📦</div><div style="margin-top:0.8rem;font-size:1.02rem;">لا توجد صفقات مطابقة للبحث</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="footer-shell">جميع الحقوق محفوظة © 2025 منصة الحبي للتداول. هذه المنصة لأغراض تعليمية فقط ولا تتحمل أي التزامات مالية.</div>', unsafe_allow_html=True)
+'''
+Path('output/app.py').write_text(code, encoding='utf-8')
+print('saved')
